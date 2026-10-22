@@ -1,0 +1,108 @@
+name: ECS deploy
+description: Register a new task definition revision with updated container images, update the ECS service and wait for it to stabilise.
+
+inputs:
+  aws-region:
+    description: AWS region of the cluster
+    required: true
+  role-to-assume:
+    description: ARN of the IAM role to assume through GitHub OIDC
+    required: true
+  cluster:
+    description: ECS cluster name or ARN
+    required: true
+  service:
+    description: ECS service name
+    required: true
+  task-definition-family:
+    description: Task definition family whose latest revision is used as the base
+    required: true
+  container-images:
+    description: Multiline name=image-uri pairs, one per container to update
+    required: true
+  wait-for-stability:
+    description: Wait for the service to reach a steady state
+    required: false
+    default: "true"
+  timeout-minutes:
+    description: Maximum minutes to wait for stability
+    required: false
+    default: "15"
+
+outputs:
+  task-definition-arn:
+    description: ARN of the newly registered task definition revision
+    value: ${{ steps.register.outputs.task-definition-arn }}
+
+runs:
+  using: composite
+  steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        aws-region: ${{ inputs.aws-region }}
+        role-to-assume: ${{ inputs.role-to-assume }}
+
+    - name: Register new task definition
+      id: register
+      shell: bash
+      env:
+        FAMILY: ${{ inputs.task-definition-family }}
+        CONTAINER_IMAGES: ${{ inputs.container-images }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        work_dir=$(mktemp -d)
+        aws ecs describe-task-definition --task-definition "$FAMILY" --query taskDefinition --output json > "$work_dir/current.json"
+        mapfile -t pairs < <(printf '%s\n' "$CONTAINER_IMAGES" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d')
+        "$ACTION_PATH/../../scripts/rewrite-task-definition.sh" "$work_dir/current.json" "${pairs[@]}" > "$work_dir/next.json"
+        arn=$(aws ecs register-task-definition --cli-input-json "file://$work_dir/next.json" --query taskDefinition.taskDefinitionArn --output text)
+        echo "task-definition-arn=$arn" >> "$GITHUB_OUTPUT"
+        echo "Registered $arn"
+
+    - name: Update service
+      shell: bash
+      env:
+        CLUSTER: ${{ inputs.cluster }}
+        SERVICE: ${{ inputs.service }}
+        TASK_DEFINITION_ARN: ${{ steps.register.outputs.task-definition-arn }}
+      run: |
+        set -euo pipefail
+        aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --task-definition "$TASK_DEFINITION_ARN" --output json > /dev/null
+
+    - name: Wait for deployment to complete
+      if: inputs.wait-for-stability == 'true'
+      shell: bash
+      env:
+        CLUSTER: ${{ inputs.cluster }}
+        SERVICE: ${{ inputs.service }}
+        TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+        TASK_DEFINITION_ARN: ${{ steps.register.outputs.task-definition-arn }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        work_dir=$(mktemp -d)
+        print_events() {
+          aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --query 'services[0].events[:10].[createdAt,message]' --output text || true
+        }
+        deadline=$((SECONDS + TIMEOUT_MINUTES * 60))
+        while true; do
+          aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --output json > "$work_dir/service.json"
+          status=0
+          "$ACTION_PATH/../../scripts/check-deployment.sh" "$work_dir/service.json" "$TASK_DEFINITION_ARN" || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "Deployment of $TASK_DEFINITION_ARN completed"
+            exit 0
+          fi
+          if [ "$status" -ne 10 ]; then
+            echo "::error::Deployment of $TASK_DEFINITION_ARN to $SERVICE failed"
+            print_events
+            exit 1
+          fi
+          if [ "$SECONDS" -ge "$deadline" ]; then
+            echo "::error::Deployment of $TASK_DEFINITION_ARN to $SERVICE did not complete within ${TIMEOUT_MINUTES} minutes"
+            print_events
+            exit 1
+          fi
+          sleep 15
+        done

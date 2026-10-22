@@ -1,0 +1,14 @@
+{
+  "services": [
+    {
+      "deployments": [
+        {
+          "status": "PRIMARY",
+          "taskDefinition": "arn:aws:ecs:eu-west-1:123456789012:task-definition/example-app:7",
+          "rolloutState": "COMPLETED",
+          "rolloutStateReason": "x"
+        }
+      ]
+    }
+  ]
+}

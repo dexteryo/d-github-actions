@@ -1,0 +1,157 @@
+name: ECS service deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub environment name (use it for approvals and environment-scoped variables)
+        type: string
+        required: true
+      aws-region:
+        type: string
+        required: true
+      role-to-assume:
+        description: ARN of the IAM role trusted for this repository and environment through GitHub OIDC
+        type: string
+        required: true
+      images:
+        description: 'JSON array of images to build, e.g. [{"name":"app","ecr-repository":"my-app","dockerfile":"Dockerfile","context":"."}]. name must match the container name in the task definition.'
+        type: string
+        required: true
+      cluster:
+        type: string
+        required: true
+      service:
+        type: string
+        required: true
+      task-definition-family:
+        type: string
+        required: true
+      wait-for-stability:
+        type: boolean
+        default: true
+      timeout-minutes:
+        type: number
+        default: 15
+      slack-notify:
+        description: Post the result to Slack. Requires the SLACK_WEBHOOK_URL secret
+        type: boolean
+        default: false
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: ecs-deploy-${{ inputs.service }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.image.name }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    strategy:
+      fail-fast: true
+      matrix:
+        image: ${{ fromJSON(inputs.images) }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and push
+        id: build
+        uses: dexteryo/dex-github-actions/actions/ecr-build-push@v0.1.0
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.role-to-assume }}
+          ecr-repository: ${{ matrix.image.ecr-repository }}
+          context: ${{ matrix.image.context || '.' }}
+          dockerfile: ${{ matrix.image.dockerfile || 'Dockerfile' }}
+          platforms: ${{ matrix.image.platforms || 'linux/amd64' }}
+          build-args: ${{ matrix.image.build-args || '' }}
+
+      - name: Record image reference
+        shell: bash
+        env:
+          NAME: ${{ matrix.image.name }}
+          IMAGE_URI: ${{ steps.build.outputs.image-uri }}
+        run: |
+          mkdir -p image-refs
+          echo "${NAME}=${IMAGE_URI}" > "image-refs/${NAME}.txt"
+
+      - name: Upload image reference
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-ref-${{ matrix.image.name }}
+          path: image-refs/${{ matrix.image.name }}.txt
+          retention-days: 1
+
+  deploy:
+    name: Deploy ${{ inputs.service }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      task-definition-arn: ${{ steps.deploy.outputs.task-definition-arn }}
+    steps:
+      - name: Download image references
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: image-ref-*
+          path: image-refs
+          merge-multiple: true
+
+      - name: Collect container images
+        id: images
+        shell: bash
+        run: |
+          {
+            echo "pairs<<EOF"
+            cat image-refs/*.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to ECS
+        id: deploy
+        uses: dexteryo/dex-github-actions/actions/ecs-deploy@v0.1.0
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.role-to-assume }}
+          cluster: ${{ inputs.cluster }}
+          service: ${{ inputs.service }}
+          task-definition-family: ${{ inputs.task-definition-family }}
+          container-images: ${{ steps.images.outputs.pairs }}
+          wait-for-stability: ${{ inputs.wait-for-stability }}
+          timeout-minutes: ${{ inputs.timeout-minutes }}
+
+  notify:
+    name: Notify Slack
+    needs: [build, deploy]
+    if: always() && inputs.slack-notify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post result
+        shell: bash
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          SERVICE: ${{ inputs.service }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::warning::slack-notify is true but SLACK_WEBHOOK_URL is not set"
+            exit 0
+          fi
+          if [ "$DEPLOY_RESULT" = "success" ]; then icon=":white_check_mark:"; status="succeeded"; else icon=":x:"; status="failed"; fi
+          text="${icon} Deploy of *${SERVICE}* to *${ENVIRONMENT}* ${status} (${SHA:0:7} by ${ACTOR}) - <${RUN_URL}|view run>"
+          jq -n --arg text "$text" '{text: $text}' | curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"

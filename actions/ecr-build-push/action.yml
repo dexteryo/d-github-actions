@@ -1,0 +1,91 @@
+name: ECR build and push
+description: Build a Docker image with Buildx and push it to Amazon ECR using GitHub OIDC (no static keys).
+
+inputs:
+  aws-region:
+    description: AWS region of the ECR registry
+    required: true
+  role-to-assume:
+    description: ARN of the IAM role to assume through GitHub OIDC
+    required: true
+  ecr-repository:
+    description: ECR repository name (without registry host)
+    required: true
+  context:
+    description: Docker build context
+    required: false
+    default: .
+  dockerfile:
+    description: Path to the Dockerfile
+    required: false
+    default: Dockerfile
+  platforms:
+    description: Target platforms
+    required: false
+    default: linux/amd64
+  build-args:
+    description: Multiline list of KEY=VALUE build arguments
+    required: false
+    default: ""
+  image-tag:
+    description: Tag to push. Defaults to the commit SHA
+    required: false
+    default: ""
+
+outputs:
+  image-uri:
+    description: Immutable image reference in the form registry/repository@sha256:digest
+    value: ${{ steps.uri.outputs.image-uri }}
+  image-tag:
+    description: Tag that was pushed
+    value: ${{ steps.uri.outputs.image-tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        aws-region: ${{ inputs.aws-region }}
+        role-to-assume: ${{ inputs.role-to-assume }}
+
+    - name: Log in to Amazon ECR
+      id: ecr
+      uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+    - name: Resolve tag
+      id: tag
+      shell: bash
+      env:
+        IMAGE_TAG: ${{ inputs.image-tag }}
+        DEFAULT_TAG: ${{ github.sha }}
+      run: echo "value=${IMAGE_TAG:-$DEFAULT_TAG}" >> "$GITHUB_OUTPUT"
+
+    - name: Build and push
+      id: build
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platforms }}
+        build-args: ${{ inputs.build-args }}
+        push: true
+        provenance: false
+        tags: ${{ steps.ecr.outputs.registry }}/${{ inputs.ecr-repository }}:${{ steps.tag.outputs.value }}
+        cache-from: type=gha,scope=${{ inputs.ecr-repository }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.ecr-repository }}
+
+    - name: Export image URI
+      id: uri
+      shell: bash
+      env:
+        REGISTRY: ${{ steps.ecr.outputs.registry }}
+        REPOSITORY: ${{ inputs.ecr-repository }}
+        DIGEST: ${{ steps.build.outputs.digest }}
+        TAG: ${{ steps.tag.outputs.value }}
+      run: |
+        echo "image-uri=${REGISTRY}/${REPOSITORY}@${DIGEST}" >> "$GITHUB_OUTPUT"
+        echo "image-tag=${TAG}" >> "$GITHUB_OUTPUT"

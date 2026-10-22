@@ -1,0 +1,29 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-integration:
+    uses: dexteryo/dex-github-actions/.github/workflows/ecs-service-deploy.yml@v0.1.0
+    with:
+      environment: integration
+      aws-region: eu-west-1
+      role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy
+      images: >-
+        [
+          {"name": "ordering-agent", "ecr-repository": "example/ordering-agent", "dockerfile": "agent/Dockerfile", "context": "."},
+          {"name": "ordering-mcp", "ecr-repository": "example/ordering-mcp", "dockerfile": "mcp/Dockerfile", "context": "."}
+        ]
+      cluster: example-integration
+      service: example-ordering-agent-integration
+      task-definition-family: example-ordering-agent-integration
+      slack-notify: true
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
