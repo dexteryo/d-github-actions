@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  release:
+    uses: dexteryo/dex-github-actions/.github/workflows/ecs-promote.yml@v0.2.0
+    with:
+      aws-region: eu-west-1
+      images: >-
+        [
+          {"name": "ordering-agent", "ecr-repository": "example/ordering-agent", "dockerfile": "agent/Dockerfile", "context": "."},
+          {"name": "ordering-mcp", "ecr-repository": "example/ordering-mcp", "dockerfile": "mcp/Dockerfile", "context": "."}
+        ]
+      environments: >-
+        [
+          {"name": "integration", "role-to-assume": "arn:aws:iam::123456789012:role/example-deploy-integration", "cluster": "example-integration", "service": "example-ordering-integration", "task-definition-family": "example-ordering-integration"},
+          {"name": "production", "role-to-assume": "arn:aws:iam::123456789012:role/example-deploy-production", "cluster": "example-production", "service": "example-ordering-production", "task-definition-family": "example-ordering-production"}
+        ]
+      scan-ignore-file: .trivyignore
+      slack-notify: true
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

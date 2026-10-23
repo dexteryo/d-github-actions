@@ -1,0 +1,4 @@
+[
+  {"name": "integration", "role-to-assume": "arn:aws:iam::123456789012:role/example-deploy-integration", "cluster": "example-integration", "service": "example-app-integration", "task-definition-family": "example-app-integration"},
+  {"name": "production", "role-to-assume": "arn:aws:iam::123456789012:role/example-deploy-production", "cluster": "example-production", "service": "example-app-production", "task-definition-family": "example-app-production", "aws-region": "eu-central-1"}
+]

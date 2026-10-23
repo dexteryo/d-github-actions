@@ -1,0 +1,4 @@
+[
+  {"name": "integration", "role-to-assume": "arn:aws:iam::123456789012:role/a", "cluster": "c", "service": "s", "task-definition-family": "f"},
+  {"name": "integration", "role-to-assume": "arn:aws:iam::123456789012:role/b", "cluster": "c", "service": "s", "task-definition-family": "f"}
+]

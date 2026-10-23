@@ -1,0 +1,6 @@
+[
+  {"name": "a", "role-to-assume": "r", "cluster": "c", "service": "s", "task-definition-family": "f"},
+  {"name": "b", "role-to-assume": "r", "cluster": "c", "service": "s", "task-definition-family": "f"},
+  {"name": "c", "role-to-assume": "r", "cluster": "c", "service": "s", "task-definition-family": "f"},
+  {"name": "d", "role-to-assume": "r", "cluster": "c", "service": "s", "task-definition-family": "f"}
+]

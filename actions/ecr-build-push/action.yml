@@ -3,11 +3,13 @@ description: Build a Docker image with Buildx and push it to Amazon ECR using Gi
 
 inputs:
   aws-region:
-    description: AWS region of the ECR registry
-    required: true
+    description: AWS region of the ECR registry. Required when push is "true"
+    required: false
+    default: ""
   role-to-assume:
-    description: ARN of the IAM role to assume through GitHub OIDC
-    required: true
+    description: ARN of the IAM role to assume through GitHub OIDC. Required when push is "true"
+    required: false
+    default: ""
   ecr-repository:
     description: ECR repository name (without registry host)
     required: true
@@ -31,6 +33,14 @@ inputs:
     description: Tag to push. Defaults to the commit SHA
     required: false
     default: ""
+  push:
+    description: Push to ECR. Set to "false" to build only and write an image archive to output-path (no AWS access needed)
+    required: false
+    default: "true"
+  output-path:
+    description: Where the image archive is written when push is "false"
+    required: false
+    default: image.tar
 
 outputs:
   image-uri:
@@ -39,11 +49,18 @@ outputs:
   image-tag:
     description: Tag that was pushed
     value: ${{ steps.uri.outputs.image-tag }}
+  image-digest:
+    description: Digest of the pushed image (sha256:...), empty when push is "false"
+    value: ${{ steps.uri.outputs.image-digest }}
+  image-path:
+    description: Path of the image archive when push is "false"
+    value: ${{ inputs.output-path }}
 
 runs:
   using: composite
   steps:
     - name: Configure AWS credentials
+      if: inputs.push == 'true'
       uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
       with:
         aws-region: ${{ inputs.aws-region }}
@@ -51,6 +68,7 @@ runs:
 
     - name: Log in to Amazon ECR
       id: ecr
+      if: inputs.push == 'true'
       uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
     - name: Set up Docker Buildx
@@ -64,8 +82,23 @@ runs:
         DEFAULT_TAG: ${{ github.sha }}
       run: echo "value=${IMAGE_TAG:-$DEFAULT_TAG}" >> "$GITHUB_OUTPUT"
 
+    - name: Build image archive
+      if: inputs.push != 'true'
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platforms }}
+        build-args: ${{ inputs.build-args }}
+        provenance: false
+        outputs: type=docker,dest=${{ inputs.output-path }}
+        tags: local/${{ inputs.ecr-repository }}:${{ steps.tag.outputs.value }}
+        cache-from: type=gha,scope=${{ inputs.ecr-repository }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.ecr-repository }}
+
     - name: Build and push
       id: build
+      if: inputs.push == 'true'
       uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
       with:
         context: ${{ inputs.context }}
@@ -80,6 +113,7 @@ runs:
 
     - name: Export image URI
       id: uri
+      if: inputs.push == 'true'
       shell: bash
       env:
         REGISTRY: ${{ steps.ecr.outputs.registry }}
@@ -89,3 +123,4 @@ runs:
       run: |
         echo "image-uri=${REGISTRY}/${REPOSITORY}@${DIGEST}" >> "$GITHUB_OUTPUT"
         echo "image-tag=${TAG}" >> "$GITHUB_OUTPUT"
+        echo "image-digest=${DIGEST}" >> "$GITHUB_OUTPUT"

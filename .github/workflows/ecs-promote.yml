@@ -1,0 +1,311 @@
+name: ECS promote
+
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        description: Default AWS region; an environment can override it with aws-region
+        type: string
+        required: true
+      images:
+        description: 'JSON array of images to build, e.g. [{"name":"app","ecr-repository":"my-app","dockerfile":"Dockerfile","context":"."}]. name must match the container name in the task definition.'
+        type: string
+        required: true
+      environments:
+        description: 'JSON array of 1 to 3 environments in promotion order. Each item: name, role-to-assume, cluster, service, task-definition-family, optional aws-region. Put required reviewers on every environment after the first.'
+        type: string
+        required: true
+      promote:
+        description: Continue to the second and third environments after the first one succeeds
+        type: boolean
+        default: true
+      scan-severity:
+        description: Comma-separated severities that fail the scan
+        type: string
+        default: HIGH,CRITICAL
+      scan-ignore-unfixed:
+        description: Ignore vulnerabilities that have no fix yet
+        type: boolean
+        default: true
+      scan-ignore-file:
+        description: Path of a reviewed ignore file in the caller repository, empty for none
+        type: string
+        default: ""
+      wait-for-stability:
+        type: boolean
+        default: true
+      timeout-minutes:
+        type: number
+        default: 15
+      slack-notify:
+        description: Post the result to Slack. Requires the SLACK_WEBHOOK_URL secret
+        type: boolean
+        default: false
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: ecs-promote-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan promotion
+    runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.plan.outputs.count }}
+      env-1: ${{ steps.plan.outputs.env-1 }}
+      env-2: ${{ steps.plan.outputs.env-2 }}
+      env-3: ${{ steps.plan.outputs.env-3 }}
+    steps:
+      - name: Validate environments
+        id: plan
+        uses: dexteryo/dex-github-actions/actions/promotion-plan@v0.2.0
+        with:
+          environments: ${{ inputs.environments }}
+          default-aws-region: ${{ inputs.aws-region }}
+
+  build:
+    name: Build ${{ matrix.image.name }}
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        image: ${{ fromJSON(inputs.images) }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build image archive
+        id: build
+        uses: dexteryo/dex-github-actions/actions/ecr-build-push@v0.2.0
+        with:
+          ecr-repository: ${{ matrix.image.ecr-repository }}
+          context: ${{ matrix.image.context || '.' }}
+          dockerfile: ${{ matrix.image.dockerfile || 'Dockerfile' }}
+          platforms: ${{ matrix.image.platforms || 'linux/amd64' }}
+          build-args: ${{ matrix.image.build-args || '' }}
+          push: "false"
+          output-path: ${{ runner.temp }}/${{ matrix.image.name }}.tar
+
+      - name: Upload image archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-archive-${{ matrix.image.name }}
+          path: ${{ steps.build.outputs.image-path }}
+          retention-days: 1
+
+  scan:
+    name: Scan ${{ matrix.image.name }}
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        image: ${{ fromJSON(inputs.images) }}
+    steps:
+      - name: Check out source
+        if: inputs.scan-ignore-file != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download image archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-archive-${{ matrix.image.name }}
+          path: archive
+
+      - name: Scan for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          input: archive/${{ matrix.image.name }}.tar
+          scanners: vuln
+          severity: ${{ inputs.scan-severity }}
+          ignore-unfixed: ${{ inputs.scan-ignore-unfixed }}
+          trivyignores: ${{ inputs.scan-ignore-file }}
+          exit-code: "1"
+          format: table
+
+  push:
+    name: Push ${{ matrix.image.name }}
+    needs: [plan, scan]
+    runs-on: ubuntu-latest
+    environment: ${{ fromJSON(needs.plan.outputs.env-1).name }}
+    strategy:
+      fail-fast: true
+      matrix:
+        image: ${{ fromJSON(inputs.images) }}
+    steps:
+      - name: Download image archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-archive-${{ matrix.image.name }}
+          path: archive
+
+      - name: Push by digest
+        id: push
+        uses: dexteryo/dex-github-actions/actions/ecr-push-image@v0.2.0
+        with:
+          aws-region: ${{ fromJSON(needs.plan.outputs.env-1).aws-region }}
+          role-to-assume: ${{ fromJSON(needs.plan.outputs.env-1).role-to-assume }}
+          ecr-repository: ${{ matrix.image.ecr-repository }}
+          image-path: archive/${{ matrix.image.name }}.tar
+
+      - name: Record image reference
+        shell: bash
+        env:
+          NAME: ${{ matrix.image.name }}
+          IMAGE_URI: ${{ steps.push.outputs.image-uri }}
+        run: |
+          mkdir -p image-refs
+          echo "${NAME}=${IMAGE_URI}" > "image-refs/${NAME}.txt"
+
+      - name: Upload image reference
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-ref-${{ matrix.image.name }}
+          path: image-refs/${{ matrix.image.name }}.txt
+          retention-days: 7
+
+  deploy-1:
+    name: Deploy to ${{ fromJSON(needs.plan.outputs.env-1).name }}
+    needs: [plan, push]
+    if: ${{ !cancelled() && needs.push.result == 'success' && fromJSON(needs.plan.outputs.count) >= 1 }}
+    runs-on: ubuntu-latest
+    environment: ${{ fromJSON(needs.plan.outputs.env-1).name }}
+    steps:
+      - name: Download image references
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: image-ref-*
+          path: image-refs
+          merge-multiple: true
+
+      - name: Collect container images
+        id: images
+        shell: bash
+        run: |
+          {
+            echo "pairs<<EOF"
+            cat image-refs/*.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy the pushed digests
+        uses: dexteryo/dex-github-actions/actions/ecs-deploy@v0.2.0
+        with:
+          aws-region: ${{ fromJSON(needs.plan.outputs.env-1).aws-region }}
+          role-to-assume: ${{ fromJSON(needs.plan.outputs.env-1).role-to-assume }}
+          cluster: ${{ fromJSON(needs.plan.outputs.env-1).cluster }}
+          service: ${{ fromJSON(needs.plan.outputs.env-1).service }}
+          task-definition-family: ${{ fromJSON(needs.plan.outputs.env-1).task-definition-family }}
+          container-images: ${{ steps.images.outputs.pairs }}
+          require-digest: "true"
+          wait-for-stability: ${{ inputs.wait-for-stability }}
+          timeout-minutes: ${{ inputs.timeout-minutes }}
+
+  deploy-2:
+    name: Deploy to ${{ fromJSON(needs.plan.outputs.env-2).name }}
+    needs: [plan, push, deploy-1]
+    if: ${{ !cancelled() && needs.push.result == 'success' && inputs.promote && needs.deploy-1.result == 'success' && fromJSON(needs.plan.outputs.count) >= 2 }}
+    runs-on: ubuntu-latest
+    environment: ${{ fromJSON(needs.plan.outputs.env-2).name }}
+    steps:
+      - name: Download image references
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: image-ref-*
+          path: image-refs
+          merge-multiple: true
+
+      - name: Collect container images
+        id: images
+        shell: bash
+        run: |
+          {
+            echo "pairs<<EOF"
+            cat image-refs/*.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy the pushed digests
+        uses: dexteryo/dex-github-actions/actions/ecs-deploy@v0.2.0
+        with:
+          aws-region: ${{ fromJSON(needs.plan.outputs.env-2).aws-region }}
+          role-to-assume: ${{ fromJSON(needs.plan.outputs.env-2).role-to-assume }}
+          cluster: ${{ fromJSON(needs.plan.outputs.env-2).cluster }}
+          service: ${{ fromJSON(needs.plan.outputs.env-2).service }}
+          task-definition-family: ${{ fromJSON(needs.plan.outputs.env-2).task-definition-family }}
+          container-images: ${{ steps.images.outputs.pairs }}
+          require-digest: "true"
+          wait-for-stability: ${{ inputs.wait-for-stability }}
+          timeout-minutes: ${{ inputs.timeout-minutes }}
+
+  deploy-3:
+    name: Deploy to ${{ fromJSON(needs.plan.outputs.env-3).name }}
+    needs: [plan, push, deploy-2]
+    if: ${{ !cancelled() && needs.push.result == 'success' && inputs.promote && needs.deploy-2.result == 'success' && fromJSON(needs.plan.outputs.count) >= 3 }}
+    runs-on: ubuntu-latest
+    environment: ${{ fromJSON(needs.plan.outputs.env-3).name }}
+    steps:
+      - name: Download image references
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: image-ref-*
+          path: image-refs
+          merge-multiple: true
+
+      - name: Collect container images
+        id: images
+        shell: bash
+        run: |
+          {
+            echo "pairs<<EOF"
+            cat image-refs/*.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy the pushed digests
+        uses: dexteryo/dex-github-actions/actions/ecs-deploy@v0.2.0
+        with:
+          aws-region: ${{ fromJSON(needs.plan.outputs.env-3).aws-region }}
+          role-to-assume: ${{ fromJSON(needs.plan.outputs.env-3).role-to-assume }}
+          cluster: ${{ fromJSON(needs.plan.outputs.env-3).cluster }}
+          service: ${{ fromJSON(needs.plan.outputs.env-3).service }}
+          task-definition-family: ${{ fromJSON(needs.plan.outputs.env-3).task-definition-family }}
+          container-images: ${{ steps.images.outputs.pairs }}
+          require-digest: "true"
+          wait-for-stability: ${{ inputs.wait-for-stability }}
+          timeout-minutes: ${{ inputs.timeout-minutes }}
+
+  notify:
+    name: Notify Slack
+    needs: [plan, deploy-1, deploy-2, deploy-3]
+    if: ${{ always() && inputs.slack-notify }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post result
+        shell: bash
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RESULTS: ${{ join(needs.*.result, ',') }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::warning::slack-notify is true but SLACK_WEBHOOK_URL is not set"
+            exit 0
+          fi
+          if [[ ",${RESULTS}," == *",failure,"* || ",${RESULTS}," == *",cancelled,"* ]]; then icon=":x:"; status="failed"; else icon=":white_check_mark:"; status="succeeded"; fi
+          text="${icon} Promotion ${status} (${SHA:0:7} by ${ACTOR}) - <${RUN_URL}|view run>"
+          jq -n --arg text "$text" '{text: $text}' | curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"

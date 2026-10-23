@@ -28,6 +28,10 @@ inputs:
     description: Maximum minutes to wait for stability
     required: false
     default: "15"
+  require-digest:
+    description: Fail unless every container image is referenced by digest (name=registry/repository@sha256:...)
+    required: false
+    default: "false"
 
 outputs:
   task-definition-arn:
@@ -42,6 +46,16 @@ runs:
       with:
         aws-region: ${{ inputs.aws-region }}
         role-to-assume: ${{ inputs.role-to-assume }}
+
+    - name: Require digest references
+      if: inputs.require-digest == 'true'
+      shell: bash
+      env:
+        CONTAINER_IMAGES: ${{ inputs.container-images }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        printf '%s\n' "$CONTAINER_IMAGES" | "$ACTION_PATH/../../scripts/check-image-refs.sh"
 
     - name: Register new task definition
       id: register

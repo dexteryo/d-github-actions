@@ -1,0 +1,2 @@
+ordering-agent=123456789012.dkr.ecr.eu-west-1.amazonaws.com/example/ordering-agent@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+ordering-mcp=123456789012.dkr.ecr.eu-west-1.amazonaws.com/example/ordering-mcp@sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210

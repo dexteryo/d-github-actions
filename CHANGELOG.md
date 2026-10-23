@@ -1,0 +1,35 @@
+# Changelog
+
+All notable changes to this repository are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
+
+## [0.2.0] - 2026-10-23
+
+### Added
+
+- `.github/workflows/ecs-promote.yml`: build once, scan with Trivy, push by digest, deploy to up to three ordered environments; later environments are gated by GitHub environment protection rules and receive the same digest.
+- `actions/ecr-push-image`: push an image archive to ECR and output the digest.
+- `actions/promotion-plan`: validates the ordered `environments` input.
+- `actions/ecr-build-push`: inputs `push` and `output-path` (build an archive without AWS access), outputs `image-digest` and `image-path`.
+- `actions/ecs-deploy`: input `require-digest`.
+- `scripts/promotion-plan.sh`, `scripts/check-image-refs.sh` with fixture tests.
+- `scripts/check-no-foreign-identifiers.sh`, its hashed deny-list and test; wired into CI and pre-commit.
+- `.pre-commit-config.yaml`, `examples/caller-promote.yml`.
+
+### Changed
+
+- Internal references use `@v0.2.0`.
+- `actions/ecr-build-push`: `aws-region` and `role-to-assume` are optional because they are only needed when `push` is `"true"`.
+- README documents the promotion flow, the deploy gate, per-environment OIDC roles and the reference patterns that were not carried over.
+
+### Migration from v0.1.0
+
+- No change is needed for callers of `ecs-service-deploy.yml`, `ecr-build-push` or `ecs-deploy`: every input, secret and output is unchanged; only the `@v0.1.0` refs move to `@v0.2.0`.
+- To promote through several environments, switch to `ecs-promote.yml` (see `examples/caller-promote.yml`). Create one GitHub environment per entry, add required reviewers to all but the first, and one IAM role per environment (`modules/ci-oidc-role` in `dex-tf-modules`, trust scoped to repository and environment).
+- The first environment's role must be allowed to push to the ECR repositories.
+
+## [0.1.0] - 2026-10-23
+
+### Added
+
+- `actions/ecr-build-push`, `actions/ecs-deploy` and the reusable `ecs-service-deploy.yml` workflow using GitHub OIDC.
+- `scripts/rewrite-task-definition.sh` and `scripts/check-deployment.sh` with fixture tests.

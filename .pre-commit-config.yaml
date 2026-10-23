@@ -1,0 +1,26 @@
+repos:
+  - repo: local
+    hooks:
+      - id: foreign-identifiers
+        name: no foreign identifiers
+        entry: scripts/check-no-foreign-identifiers.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck
+        language: system
+        files: \.sh$
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
+        pass_filenames: false
+      - id: shell-tests
+        name: shell tests
+        entry: bash -c 'for t in tests/*.test.sh; do "$t" || exit 1; done'
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -1,0 +1,38 @@
+name: Promotion plan
+description: Validate the ordered list of environments of a promotion and expose each one as a JSON output.
+
+inputs:
+  environments:
+    description: 'JSON array of 1 to 3 environments, in promotion order. Each item: name, role-to-assume, cluster, service, task-definition-family, optional aws-region'
+    required: true
+  default-aws-region:
+    description: Region used by environments that do not set aws-region
+    required: true
+
+outputs:
+  count:
+    description: Number of environments
+    value: ${{ steps.plan.outputs.count }}
+  env-1:
+    description: First environment as JSON
+    value: ${{ steps.plan.outputs.env-1 }}
+  env-2:
+    description: Second environment as JSON, {} when absent
+    value: ${{ steps.plan.outputs.env-2 }}
+  env-3:
+    description: Third environment as JSON, {} when absent
+    value: ${{ steps.plan.outputs.env-3 }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build plan
+      id: plan
+      shell: bash
+      env:
+        ENVIRONMENTS: ${{ inputs.environments }}
+        DEFAULT_REGION: ${{ inputs.default-aws-region }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        "$ACTION_PATH/../../scripts/promotion-plan.sh" "$ENVIRONMENTS" "$DEFAULT_REGION" >> "$GITHUB_OUTPUT"
