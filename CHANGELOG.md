@@ -2,6 +2,10 @@
 
 All notable changes to this repository are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-23
+
+Repository renamed; references updated; no functional change.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added
@@ -24,7 +28,7 @@ All notable changes to this repository are documented here. The format follows [
 ### Migration from v0.1.0
 
 - No change is needed for callers of `ecs-service-deploy.yml`, `ecr-build-push` or `ecs-deploy`: every input, secret and output is unchanged; only the `@v0.1.0` refs move to `@v0.2.0`.
-- To promote through several environments, switch to `ecs-promote.yml` (see `examples/caller-promote.yml`). Create one GitHub environment per entry, add required reviewers to all but the first, and one IAM role per environment (`modules/ci-oidc-role` in `dex-tf-modules`, trust scoped to repository and environment).
+- To promote through several environments, switch to `ecs-promote.yml` (see `examples/caller-promote.yml`). Create one GitHub environment per entry, add required reviewers to all but the first, and one IAM role per environment (`modules/ci-oidc-role` in `d-tf-modules`, trust scoped to repository and environment).
 - The first environment's role must be allowed to push to the ECR repositories.
 
 ## [0.1.0] - 2026-10-23

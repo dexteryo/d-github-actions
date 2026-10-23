@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   deploy-integration:
-    uses: dexteryo/dex-github-actions/.github/workflows/ecs-service-deploy.yml@v0.2.0
+    uses: dexteryo/d-github-actions/.github/workflows/ecs-service-deploy.yml@v0.2.1
     with:
       environment: integration
       aws-region: eu-west-1

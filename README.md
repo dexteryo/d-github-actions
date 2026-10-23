@@ -1,4 +1,4 @@
-# dex-github-actions
+# d-github-actions
 
 Reusable GitHub Actions for building container images and deploying them to Amazon ECS (Fargate) with GitHub OIDC. No static AWS keys, ever.
 
@@ -81,7 +81,7 @@ The `push` job runs in the first environment, because the first environment's ro
 
 ### Roles per environment
 
-Each environment has its own IAM role. The GitHub OIDC trust policy of the role is scoped to the repository and the environment through the `sub` claim, `repo:<owner>/<repo>:environment:<name>`, so a job that does not run in that environment cannot assume the role. Create the roles with `modules/ci-oidc-role` of `dex-tf-modules`. The role needs ECR push on the repositories (first environment) and the ECS permissions listed in the quick start.
+Each environment has its own IAM role. The GitHub OIDC trust policy of the role is scoped to the repository and the environment through the `sub` claim, `repo:<owner>/<repo>:environment:<name>`, so a job that does not run in that environment cannot assume the role. Create the roles with `modules/ci-oidc-role` of `d-tf-modules`. The role needs ECR push on the repositories (first environment) and the ECS permissions listed in the quick start.
 
 ## Reference pipeline patterns
 
@@ -92,14 +92,14 @@ Deliberately not carried over: change-ticket automation, per-branch and protecte
 ## Using the actions directly
 
 ```yaml
-- uses: dexteryo/dex-github-actions/actions/ecr-build-push@v0.2.0
+- uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.2.1
   id: build
   with:
     aws-region: eu-west-1
     role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy
     ecr-repository: example/app
 
-- uses: dexteryo/dex-github-actions/actions/ecs-deploy@v0.2.0
+- uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.2.1
   with:
     aws-region: eu-west-1
     role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy

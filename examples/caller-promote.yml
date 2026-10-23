@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   release:
-    uses: dexteryo/dex-github-actions/.github/workflows/ecs-promote.yml@v0.2.0
+    uses: dexteryo/d-github-actions/.github/workflows/ecs-promote.yml@v0.2.1
     with:
       aws-region: eu-west-1
       images: >-
