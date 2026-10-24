@@ -135,8 +135,10 @@ The approval on the GitHub environment comes before the apply job starts, so app
 jobs:
   terraform:
     permissions:
+      id-token: write
       contents: read
-    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.1
+      pull-requests: write
+    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.2
     with:
       working-directory: infra
       roots: |
@@ -153,12 +155,16 @@ Or call `actions/terraform-gate` from your own job after checking out the reposi
 
 Copy `examples/caller-terraform.yml`. It plans on pull requests and on pushes to `main`, and applies when started by hand (`workflow_dispatch`) on `main`.
 
-The calling job must grant the permissions the called job needs, because a reusable workflow cannot raise them:
+A reusable workflow cannot raise permissions, and GitHub checks every job of the called workflow against the calling job before anything runs, including jobs that the inputs would skip. So every calling job, plan and apply alike, must grant all of them:
 
-| Job | Permissions |
-| --- | --- |
-| plan | `id-token: write`, `contents: read`, `pull-requests: write` |
-| apply | `id-token: write`, `contents: read` |
+```yaml
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+```
+
+If one is missing, the run ends as `startup_failure` with no job logs. The apply job only uses `id-token` and `contents`; the token it receives still carries `pull-requests: write`, which it does not use.
 
 A pull request from a fork gets a read-only token, so the comment step cannot post there.
 
@@ -168,7 +174,7 @@ The state backend, its KMS key and the OIDC roles belong to the caller. `modules
 
 ### Release tag
 
-The workflow calls the actions at `@v0.3.0`. Tag the release `v0.3.0` right after merging, or the workflow cannot resolve its actions.
+The workflow calls its own actions by commit hash, so a moved tag cannot change what runs. The hash is the newest commit that touched `actions/` or `scripts/`: the actions find their scripts through `github.action_path`, so it must not be older than that. When you change either, merge first, then point the workflow at the merge commit in a follow-up change.
 
 ## Reference pipeline patterns
 
@@ -179,14 +185,14 @@ Deliberately not carried over: change-ticket automation, per-branch and protecte
 ## Using the actions directly
 
 ```yaml
-- uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.3.1
+- uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.3.2
   id: build
   with:
     aws-region: eu-west-1
     role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy
     ecr-repository: example/app
 
-- uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.1
+- uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.2
   with:
     aws-region: eu-west-1
     role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy

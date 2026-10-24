@@ -2,6 +2,13 @@
 
 All notable changes to this repository are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.2] - 2026-10-24
+
+### Fixed
+
+- The Terraform caller example and the README gave the apply job, and the "gate alone" example, fewer permissions than the reusable workflow's `plan` job asks for. GitHub checks all jobs of a called workflow against the calling job, so such a caller ended in `startup_failure` with no logs. Both now grant `id-token`, `contents` and `pull-requests`, and the README explains why.
+- The README's release-tag note described the old `@v0.3.0` action references.
+
 ## [0.3.1] - 2026-10-24
 
 ### Security
