@@ -46,6 +46,10 @@ on:
         description: Run the plan job. Set false to run only the gate
         type: boolean
         default: true
+      plan-refresh:
+        description: Refresh the state before the plan job plans. Set false on pull requests when the plan role cannot read every managed resource, for example secret values
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -105,13 +109,14 @@ jobs:
           persist-credentials: false
 
       - name: Plan
-        uses: dexteryo/d-github-actions/actions/terraform-plan@95c26eacbf6437bc837b79f0c4be714d0ecd0629 # v0.3.0
+        uses: dexteryo/d-github-actions/actions/terraform-plan@277aa2f48ec47ec856f6c657064a599f3d97849f # v0.3.3
         with:
           working-directory: ${{ needs.gate.outputs.root-directory }}
           terraform-version: ${{ inputs.terraform-version }}
           aws-region: ${{ inputs.aws-region }}
           role-to-assume: ${{ inputs.plan-role-to-assume }}
           lock: "false"
+          refresh: ${{ inputs.plan-refresh && 'true' || 'false' }}
 
   apply:
     needs: gate
