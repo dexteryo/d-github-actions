@@ -2,16 +2,20 @@
 
 All notable changes to this repository are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] - 2026-10-24
 
 ### Added
 
 - `actions/terraform-gate`: `terraform fmt`, `terraform validate` per root module, tflint and checkov.
 - `actions/terraform-plan`: plan with `-detailed-exitcode`, job summary and a pull request comment edited in place; outputs `result` and `summary`.
-- `actions/terraform-apply`: plan and apply the saved plan.
-- `.github/workflows/terraform.yml`: reusable gate, plan and apply workflow. It calls the actions at `@v0.3.0`, so the release must be tagged `v0.3.0` right after merge.
+- `actions/terraform-apply`: plan and apply in one job; it does not apply the plan a pull request showed.
+- `.github/workflows/terraform.yml`: reusable gate, plan and apply workflow. It calls the actions at `@v0.3.0`.
 - `scripts/terraform-plan-summary.sh`, `scripts/terraform-plan-comment.sh` with fixture tests.
 - `examples/caller-terraform.yml`.
+
+### Changed
+
+- The ECS workflows, examples and README refer to the actions at `v0.3.0` (was `v0.2.1`). No functional change.
 
 ## [0.2.1] - 2026-10-23
 
