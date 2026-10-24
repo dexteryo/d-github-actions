@@ -1,0 +1,1 @@
+Error: Failed to get existing workspaces: AccessDenied: User is not authorized to perform: s3:ListBucket on resource: "arn:aws:s3:::example-state"

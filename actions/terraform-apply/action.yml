@@ -1,0 +1,53 @@
+name: Terraform apply
+description: Plan a root module and apply that plan with a role that can write the state.
+
+inputs:
+  working-directory:
+    description: Root module directory, relative to the repository root
+    required: true
+  terraform-version:
+    description: Terraform version to install
+    required: true
+  aws-region:
+    description: AWS region
+    required: true
+  role-to-assume:
+    description: ARN of the IAM role trusted for this repository through GitHub OIDC, with permission to apply
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+      with:
+        terraform_version: ${{ inputs.terraform-version }}
+        terraform_wrapper: false
+
+    - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        role-to-assume: ${{ inputs.role-to-assume }}
+        aws-region: ${{ inputs.aws-region }}
+
+    - name: terraform init
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        TF_IN_AUTOMATION: "true"
+        TF_INPUT: "false"
+      run: terraform init
+
+    - name: terraform plan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        TF_IN_AUTOMATION: "true"
+        TF_INPUT: "false"
+      run: terraform plan -no-color -out=tfplan
+
+    - name: terraform apply
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        TF_IN_AUTOMATION: "true"
+        TF_INPUT: "false"
+      run: terraform apply -no-color tfplan

@@ -1,6 +1,6 @@
 # d-github-actions
 
-Reusable GitHub Actions for building container images and deploying them to Amazon ECS (Fargate) with GitHub OIDC. No static AWS keys, ever.
+Reusable GitHub Actions and workflows for building container images, deploying them to Amazon ECS (Fargate) and checking, planning and applying Terraform, all with GitHub OIDC. No static AWS keys, ever.
 
 This repository is public. It contains no account identifiers, hostnames or secrets; every example uses placeholders such as `123456789012`.
 
@@ -12,13 +12,19 @@ This repository is public. It contains no account identifiers, hostnames or secr
 | `actions/ecr-push-image` | Composite action: load an image archive and push it to ECR, output `repo@digest` |
 | `actions/ecs-deploy` | Composite action: new task definition revision with swapped images, service update, wait; optional `require-digest` |
 | `actions/promotion-plan` | Composite action: validates the ordered `environments` list of a promotion |
+| `actions/terraform-gate` | Composite action: `terraform fmt`, `terraform validate` per root module, tflint, checkov |
+| `actions/terraform-plan` | Composite action: OIDC login, `terraform plan`, summary, pull request comment edited in place |
+| `actions/terraform-apply` | Composite action: OIDC login, plan, apply the saved plan |
 | `.github/workflows/ecs-service-deploy.yml` | Reusable workflow: build N images in parallel, then deploy to one environment, optional Slack |
 | `.github/workflows/ecs-promote.yml` | Reusable workflow: build once, scan, push by digest, deploy to up to three environments in order |
+| `.github/workflows/terraform.yml` | Reusable workflow: gate, then plan (read-only) or apply (write role, optional environment approval) |
 | `scripts/rewrite-task-definition.sh` | The `jq` rewrite used by `ecs-deploy` (testable locally) |
 | `scripts/promotion-plan.sh`, `scripts/check-image-refs.sh` | Validation of the environment list and of digest-only image references |
 | `scripts/check-no-foreign-identifiers.sh` | Fails on a hashed deny-list of foreign identifiers and on 12-digit numbers other than `123456789012` |
 | `scripts/check-deployment.sh` | Decides from `describe-services` JSON whether the new revision rolled out (0 done, 10 keep polling, 1 failed) |
+| `scripts/terraform-plan-summary.sh`, `scripts/terraform-plan-comment.sh` | One-line plan summary from the exit code and log; markdown body of the pull request comment |
 | `examples/caller.yml` | Copy-paste caller workflow |
+| `examples/caller-terraform.yml` | Copy-paste caller for the Terraform workflow |
 | `tests/` | Bash tests and fixtures |
 
 ## Quick start
@@ -82,6 +88,87 @@ The `push` job runs in the first environment, because the first environment's ro
 ### Roles per environment
 
 Each environment has its own IAM role. The GitHub OIDC trust policy of the role is scoped to the repository and the environment through the `sub` claim, `repo:<owner>/<repo>:environment:<name>`, so a job that does not run in that environment cannot assume the role. Create the roles with `modules/ci-oidc-role` of `d-tf-modules`. The role needs ECR push on the repositories (first environment) and the ECS permissions listed in the quick start.
+
+## Terraform
+
+`terraform.yml` replaces a long inline `infra.yml`. It has three jobs.
+
+- `gate` always runs: `terraform fmt -check -recursive`, `terraform validate` in every root module (after `init -backend=false`), `tflint --init && tflint --recursive`, and `checkov -d .` with a pinned version.
+- `plan` runs when `apply` is `false` and `plan` is `true`. It assumes the plan role, runs `terraform init`, then `terraform plan -no-color -lock=false -detailed-exitcode -out=tfplan`. The summary (`No changes.`, `Plan: N to add...`, `Changes to outputs only.` or `Plan failed (exit N).`) goes to the job summary and to a pull request comment that is edited in place (`gh pr comment --edit-last --create-if-none`). The job fails only when the plan itself failed.
+- `apply` runs when `apply` is `true`, after `gate`, in the GitHub `environment` you name, so required reviewers can approve it. It assumes the apply role, plans, and applies that saved plan. It fails at once when `apply-role-to-assume` is empty.
+
+`plan` and `apply` work in the first entry of `roots`; the gate validates all of them. A caller with several environments calls the workflow once per root, one job per environment, each listing its own root first.
+
+The plan and apply jobs each have a concurrency group made of the job kind, the first root (with `working-directory`) and the ref. A newer plan for the same root and ref cancels an older one; applies for the same root queue behind each other and are never cancelled, so merging a pull request while an apply runs does not interrupt it. Two calls in one run that list different roots first have different groups and never cancel each other.
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `working-directory` | no | Default `.` |
+| `roots` | yes | Root module directories, one per line, relative to `working-directory`. The gate validates all of them; plan and apply use the first |
+| `terraform-version` | yes | Terraform version to install |
+| `aws-region` | yes | AWS region |
+| `plan-role-to-assume` | yes | Read-only role for plans |
+| `apply-role-to-assume` | no | Write role; required when `apply` is `true` |
+| `apply` | no | Default `false`; `true` runs the apply job instead of the plan job |
+| `environment` | no | GitHub environment of the apply job |
+| `checkov`, `tflint` | no | Default `true` |
+| `checkov-version` | no | Default `3.3.29` |
+| `plan` | no | Default `true`; set `false` to run only the gate |
+
+### Two roles
+
+Use two IAM roles. The plan role is read-only: it can read the state and the resources Terraform refreshes, and it is trusted by pull request runs. The apply role can write the state and change the infrastructure; scope its OIDC trust to the `environment:<name>` claim (and keep the environment restricted to `main` with required reviewers), so a pull request can never assume it.
+
+### Why plans use `-lock=false`
+
+Terraform takes the state lock by writing a lock entry (a DynamoDB item or an S3 lock file, depending on the backend). A read-only role cannot write it, so a locking plan would fail for the one role you want on pull requests. A plan only reads, so skipping the lock is safe; the saved plan is not applied. `apply` plans and applies with the lock, so two applies cannot overlap. Callers that give the plan role write access to the lock can set `lock: "true"` on `actions/terraform-plan`.
+
+### What apply applies
+
+The apply job plans again and applies that plan in the same job; it does not apply the plan that the pull request showed. State and providers can change between the two, and a saved plan from a pull request is usually stale after merge. The apply job's log shows the plan it applied.
+
+The approval on the GitHub environment comes before the apply job starts, so approvers cannot see the plan they are approving. For a production environment where approvers must review the exact plan, split the work into an unapproved plan job that uploads the plan file and an approval-gated apply job that applies that file. This repository does not provide that yet.
+
+### Running the gate alone
+
+```yaml
+jobs:
+  terraform:
+    permissions:
+      contents: read
+    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.0
+    with:
+      working-directory: infra
+      roots: |
+        envs/example
+      terraform-version: "1.15.3"
+      aws-region: eu-west-1
+      plan-role-to-assume: arn:aws:iam::123456789012:role/example-terraform-plan
+      plan: false
+```
+
+Or call `actions/terraform-gate` from your own job after checking out the repository; it does not check out for you.
+
+### Caller
+
+Copy `examples/caller-terraform.yml`. It plans on pull requests and on pushes to `main`, and applies when started by hand (`workflow_dispatch`) on `main`.
+
+The calling job must grant the permissions the called job needs, because a reusable workflow cannot raise them:
+
+| Job | Permissions |
+| --- | --- |
+| plan | `id-token: write`, `contents: read`, `pull-requests: write` |
+| apply | `id-token: write`, `contents: read` |
+
+A pull request from a fork gets a read-only token, so the comment step cannot post there.
+
+### What the caller owns
+
+The state backend, its KMS key and the OIDC roles belong to the caller. `modules/ci-oidc-role` in `d-tf-modules` creates the OIDC roles, but its permissions are shaped for ECS deploy roles; a Terraform role needs its own policy (state bucket and lock access, plus whatever the configuration manages).
+
+### Release tag
+
+The workflow calls the actions at `@v0.3.0`. Tag the release `v0.3.0` right after merging, or the workflow cannot resolve its actions.
 
 ## Reference pipeline patterns
 
