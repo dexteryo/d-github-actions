@@ -17,6 +17,9 @@ inputs:
   lock:
     description: Take the state lock, "true" or "false". Leave it false for read-only roles, which cannot write the lock
     default: "false"
+  refresh:
+    description: Refresh the state from the live resources before planning, "true" or "false". Set false when the plan role cannot read every managed resource, for example secret values
+    default: "true"
   comment-on-pull-request:
     description: Post the plan as a pull request comment, "true" or "false"
     default: "true"
@@ -62,13 +65,14 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         LOCK: ${{ inputs.lock }}
+        REFRESH: ${{ inputs.refresh }}
         PLAN_LOG: ${{ runner.temp }}/terraform-plan.log
         TF_IN_AUTOMATION: "true"
         TF_INPUT: "false"
       run: |
         set -euo pipefail
         exit_code=0
-        terraform plan -no-color -lock="$LOCK" -detailed-exitcode -out=tfplan > "$PLAN_LOG" 2>&1 || exit_code=$?
+        terraform plan -no-color -lock="$LOCK" -refresh="$REFRESH" -detailed-exitcode -out=tfplan > "$PLAN_LOG" 2>&1 || exit_code=$?
         echo "exit-code=$exit_code" >> "$GITHUB_OUTPUT"
 
     - name: Summarise
