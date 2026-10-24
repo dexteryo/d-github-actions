@@ -2,6 +2,17 @@
 
 All notable changes to this repository are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.3] - 2026-10-24
+
+### Added
+
+- `actions/terraform-plan`: a `refresh` input, default `"true"`, passed to `terraform plan -refresh`.
+- `.github/workflows/terraform.yml`: a `plan-refresh` input, default `true`. Callers set it to `false` on pull requests so a plan role without `secretsmanager:GetSecretValue` can still plan a configuration that manages secret versions. The README explains the trade-off.
+
+### Changed
+
+- The workflow calls `actions/terraform-plan` at `277aa2f`, the commit that adds `refresh`. The other actions stay at `95c26ea`. The README and the examples refer to `v0.3.3`.
+
 ## [0.3.2] - 2026-10-24
 
 ### Fixed

@@ -94,7 +94,7 @@ Each environment has its own IAM role. The GitHub OIDC trust policy of the role 
 `terraform.yml` replaces a long inline `infra.yml`. It has three jobs.
 
 - `gate` always runs: `terraform fmt -check -recursive`, `terraform validate` in every root module (after `init -backend=false`), `tflint --init && tflint --recursive`, and `checkov -d .` with a pinned version.
-- `plan` runs when `apply` is `false` and `plan` is `true`. It assumes the plan role, runs `terraform init`, then `terraform plan -no-color -lock=false -detailed-exitcode -out=tfplan`. The summary (`No changes.`, `Plan: N to add...`, `Changes to outputs only.` or `Plan failed (exit N).`) goes to the job summary and to a pull request comment that is edited in place (`gh pr comment --edit-last --create-if-none`). The job fails only when the plan itself failed.
+- `plan` runs when `apply` is `false` and `plan` is `true`. It assumes the plan role, runs `terraform init`, then `terraform plan -no-color -lock=false -refresh=<plan-refresh> -detailed-exitcode -out=tfplan`. The summary (`No changes.`, `Plan: N to add...`, `Changes to outputs only.` or `Plan failed (exit N).`) goes to the job summary and to a pull request comment that is edited in place (`gh pr comment --edit-last --create-if-none`). The job fails only when the plan itself failed.
 - `apply` runs when `apply` is `true`, after `gate`, in the GitHub `environment` you name, so required reviewers can approve it. It assumes the apply role, plans, and applies that saved plan. It fails at once when `apply-role-to-assume` is empty.
 
 `plan` and `apply` work in the first entry of `roots`; the gate validates all of them. A caller with several environments calls the workflow once per root, one job per environment, each listing its own root first.
@@ -114,6 +114,7 @@ The plan and apply jobs each have a concurrency group made of the job kind, the 
 | `checkov`, `tflint` | no | Default `true` |
 | `checkov-version` | no | Default `3.3.29` |
 | `plan` | no | Default `true`; set `false` to run only the gate |
+| `plan-refresh` | no | Default `true`; `false` plans without refreshing the state, see below |
 
 ### Two roles
 
@@ -122,6 +123,18 @@ Use two IAM roles. The plan role is read-only: it can read the state and the res
 ### Why plans use `-lock=false`
 
 Terraform takes the state lock by writing a lock entry (a DynamoDB item or an S3 lock file, depending on the backend). A read-only role cannot write it, so a locking plan would fail for the one role you want on pull requests. A plan only reads, so skipping the lock is safe; the saved plan is not applied. `apply` plans and applies with the lock, so two applies cannot overlap. Callers that give the plan role write access to the lock can set `lock: "true"` on `actions/terraform-plan`.
+
+### Plans without refresh
+
+A refresh reads every managed resource, and for some resources that means reading a secret. Refreshing an `aws_secretsmanager_secret_version` calls `secretsmanager:GetSecretValue`, so a plan role that may not read secret values fails as soon as such a secret exists. Giving the plan role that permission lets anyone who can open a pull request print the secrets from a workflow they change.
+
+Set `plan-refresh: false` for pull request runs instead, and keep refreshing where the role is trusted:
+
+```yaml
+      plan-refresh: ${{ github.event_name != 'pull_request' }}
+```
+
+The pull request plan then compares the code with the state as last written, so it shows what the change does but not drift made outside Terraform. Data sources are still read. The plan on the default branch, and the plan inside `apply`, still refresh and catch drift before anything is applied.
 
 ### What apply applies
 
@@ -138,7 +151,7 @@ jobs:
       id-token: write
       contents: read
       pull-requests: write
-    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.2
+    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.3
     with:
       working-directory: infra
       roots: |
@@ -185,14 +198,14 @@ Deliberately not carried over: change-ticket automation, per-branch and protecte
 ## Using the actions directly
 
 ```yaml
-- uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.3.2
+- uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.3.3
   id: build
   with:
     aws-region: eu-west-1
     role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy
     ecr-repository: example/app
 
-- uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.2
+- uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.3
   with:
     aws-region: eu-west-1
     role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy
