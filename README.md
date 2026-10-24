@@ -123,6 +123,12 @@ Use two IAM roles. The plan role is read-only: it can read the state and the res
 
 Terraform takes the state lock by writing a lock entry (a DynamoDB item or an S3 lock file, depending on the backend). A read-only role cannot write it, so a locking plan would fail for the one role you want on pull requests. A plan only reads, so skipping the lock is safe; the saved plan is not applied. `apply` plans and applies with the lock, so two applies cannot overlap. Callers that give the plan role write access to the lock can set `lock: "true"` on `actions/terraform-plan`.
 
+### What apply applies
+
+The apply job plans again and applies that plan in the same job; it does not apply the plan that the pull request showed. State and providers can change between the two, and a saved plan from a pull request is usually stale after merge. The apply job's log shows the plan it applied.
+
+The approval on the GitHub environment comes before the apply job starts, so approvers cannot see the plan they are approving. For a production environment where approvers must review the exact plan, split the work into an unapproved plan job that uploads the plan file and an approval-gated apply job that applies that file. This repository does not provide that yet.
+
 ### Running the gate alone
 
 ```yaml

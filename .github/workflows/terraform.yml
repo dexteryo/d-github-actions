@@ -64,8 +64,12 @@ jobs:
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
           ROOTS: ${{ inputs.roots }}
         run: |
-          first_root=$(grep -m 1 . <<<"$ROOTS")
-          echo "directory=${WORKING_DIRECTORY}/${first_root}" >> "$GITHUB_OUTPUT"
+          first_root=$(grep -m 1 . <<<"$ROOTS" || true)
+          if [ -z "$first_root" ]; then
+            echo "::error::roots is empty; list at least one root module directory"
+            exit 1
+          fi
+          echo "directory=${WORKING_DIRECTORY%/}/${first_root}" >> "$GITHUB_OUTPUT"
 
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

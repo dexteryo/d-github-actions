@@ -18,9 +18,9 @@ if [ ! -r "$plan_log" ]; then
   exit 2
 fi
 
-echo "### $title"
+printf '### %s\n' "$title"
 echo
-echo "**$summary**"
+printf '**%s**\n' "$summary"
 echo
 echo '<details><summary>Plan output</summary>'
 echo

@@ -1,0 +1,3 @@
+module.example.aws_s3_bucket.logs: Refreshing state... [id=example-logs]
+
+Terraform detected changes outside of Terraform, and the plan has changes that are not summarised.

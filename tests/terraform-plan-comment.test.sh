@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -37,6 +38,10 @@ expect_equal "an oversized log is cut to 60000 bytes" "60000" "$(sed -n '8,$p' <
 printf 'no trailing newline' > "$workdir/unterminated.log"
 unterminated_body=$("$comment" "summary" "$workdir/unterminated.log" "Terraform plan")
 expect_equal "an unterminated log still closes the fence on its own line" '```' "$(tail -n 2 <<<"$unterminated_body" | head -n 1)"
+
+awkward_body=$("$comment" '$(echo expanded) \n `id`' "$fixtures/terraform-plan-changes.log" '-n $(echo expanded)')
+expect_equal "a title that looks like an option is printed as text" '### -n $(echo expanded)' "$(sed -n 1p <<<"$awkward_body")"
+expect_equal "a summary with substitutions and escapes is printed as text" '**$(echo expanded) \n `id`**' "$(sed -n 3p <<<"$awkward_body")"
 
 status=0
 "$comment" "summary" /nonexistent.log "Terraform plan" >/dev/null 2>&1 || status=$?

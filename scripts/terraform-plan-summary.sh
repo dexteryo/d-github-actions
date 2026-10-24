@@ -31,6 +31,8 @@ case "$exit_code" in
     plan_line=$(grep -E '^Plan:' "$plan_log" | tail -n 1 || true)
     if grep -q '^Changes to Outputs:' "$plan_log" && { [ -z "$plan_line" ] || [ "$plan_line" = "$no_op_plan_line" ]; }; then
       echo "Changes to outputs only."
+    elif [ -z "$plan_line" ]; then
+      echo "Plan has changes (no summary line found)."
     else
       echo "$plan_line"
     fi

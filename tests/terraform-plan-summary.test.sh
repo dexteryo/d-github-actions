@@ -21,6 +21,7 @@ expect_equal "exit 0 does not need the log" "No changes." "$("$summary" 0 /nonex
 expect_equal "exit 2 prints the plan line" "Plan: 1 to add, 0 to change, 0 to destroy." "$("$summary" 2 "$fixtures/terraform-plan-changes.log")"
 expect_equal "exit 2 with outputs only" "Changes to outputs only." "$("$summary" 2 "$fixtures/terraform-plan-outputs-only.log")"
 expect_equal "exit 2 with a zero plan line and outputs" "Changes to outputs only." "$("$summary" 2 "$fixtures/terraform-plan-zero-plan-line.log")"
+expect_equal "exit 2 with no plan line says so" "Plan has changes (no summary line found)." "$("$summary" 2 "$fixtures/terraform-plan-no-plan-line.log")"
 expect_equal "exit 1 is a failed plan" "Plan failed (exit 1)." "$("$summary" 1 "$fixtures/terraform-plan-failed.log")"
 expect_equal "any other exit code is a failed plan" "Plan failed (exit 137)." "$("$summary" 137 "$fixtures/terraform-plan-failed.log")"
 
