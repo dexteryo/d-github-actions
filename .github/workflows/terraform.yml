@@ -77,7 +77,7 @@ jobs:
           persist-credentials: false
 
       - name: Run the gate
-        uses: dexteryo/d-github-actions/actions/terraform-gate@v0.3.0
+        uses: dexteryo/d-github-actions/actions/terraform-gate@95c26eacbf6437bc837b79f0c4be714d0ecd0629 # v0.3.0
         with:
           working-directory: ${{ inputs.working-directory }}
           roots: ${{ inputs.roots }}
@@ -105,7 +105,7 @@ jobs:
           persist-credentials: false
 
       - name: Plan
-        uses: dexteryo/d-github-actions/actions/terraform-plan@v0.3.0
+        uses: dexteryo/d-github-actions/actions/terraform-plan@95c26eacbf6437bc837b79f0c4be714d0ecd0629 # v0.3.0
         with:
           working-directory: ${{ needs.gate.outputs.root-directory }}
           terraform-version: ${{ inputs.terraform-version }}
@@ -142,7 +142,7 @@ jobs:
           persist-credentials: false
 
       - name: Apply
-        uses: dexteryo/d-github-actions/actions/terraform-apply@v0.3.0
+        uses: dexteryo/d-github-actions/actions/terraform-apply@95c26eacbf6437bc837b79f0c4be714d0ecd0629 # v0.3.0
         with:
           working-directory: ${{ needs.gate.outputs.root-directory }}
           terraform-version: ${{ inputs.terraform-version }}

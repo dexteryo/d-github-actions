@@ -2,6 +2,16 @@
 
 All notable changes to this repository are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-10-24
+
+### Security
+
+- The reusable workflows call their own actions by full commit hash (`95c26ea`, whose `actions/` and `scripts/` are identical to v0.3.0) instead of the `v0.3.0` tag. A moved tag can no longer change the code that runs with a caller's deploy or apply role.
+
+### Changed
+
+- The README and the examples refer to `v0.3.1`. No functional change.
+
 ## [0.3.0] - 2026-10-24
 
 ### Added
@@ -9,7 +19,7 @@ All notable changes to this repository are documented here. The format follows [
 - `actions/terraform-gate`: `terraform fmt`, `terraform validate` per root module, tflint and checkov.
 - `actions/terraform-plan`: plan with `-detailed-exitcode`, job summary and a pull request comment edited in place; outputs `result` and `summary`.
 - `actions/terraform-apply`: plan and apply in one job; it does not apply the plan a pull request showed.
-- `.github/workflows/terraform.yml`: reusable gate, plan and apply workflow. It calls the actions at `@v0.3.0`.
+- `.github/workflows/terraform.yml`: reusable gate, plan and apply workflow. It called the actions at `@v0.3.0`; 0.3.1 pins them by commit hash.
 - `scripts/terraform-plan-summary.sh`, `scripts/terraform-plan-comment.sh` with fixture tests.
 - `examples/caller-terraform.yml`.
 
