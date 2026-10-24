@@ -26,6 +26,10 @@ jobs:
         run: tests/check-deployment.test.sh
       - name: promotion plan tests
         run: tests/promotion-plan.test.sh
+      - name: terraform plan summary tests
+        run: tests/terraform-plan-summary.test.sh
+      - name: terraform plan comment tests
+        run: tests/terraform-plan-comment.test.sh
       - name: foreign identifier check
         run: scripts/check-no-foreign-identifiers.sh --git
       - name: foreign identifier check tests

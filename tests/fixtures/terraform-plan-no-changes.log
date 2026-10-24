@@ -1,0 +1,6 @@
+aws_s3_bucket.example: Refreshing state... [id=example-bucket]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.

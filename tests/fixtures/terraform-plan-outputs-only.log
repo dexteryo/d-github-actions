@@ -1,0 +1,7 @@
+aws_s3_bucket.example: Refreshing state... [id=example-bucket]
+
+Changes to Outputs:
+  + bucket_name = "example-bucket"
+
+You can apply this plan to save these new output values to the Terraform
+state, without changing any real infrastructure.

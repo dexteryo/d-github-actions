@@ -1,0 +1,13 @@
+aws_s3_bucket.example: Refreshing state... [id=example-bucket]
+
+Terraform will perform the following actions:
+
+  # aws_s3_bucket.logs will be created
+  + resource "aws_s3_bucket" "logs" {
+      + bucket = "example-logs"
+    }
+
+Plan: 1 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + logs_bucket = "example-logs"

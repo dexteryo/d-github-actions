@@ -1,0 +1,146 @@
+name: Terraform
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory that contains the Terraform code, relative to the repository root
+        type: string
+        default: .
+      roots:
+        description: Root module directories, one per line, relative to working-directory. The plan and apply jobs run in the first one
+        type: string
+        required: true
+      terraform-version:
+        type: string
+        required: true
+      aws-region:
+        type: string
+        required: true
+      plan-role-to-assume:
+        description: ARN of the read-only role used for plans
+        type: string
+        required: true
+      apply-role-to-assume:
+        description: ARN of the role used for apply. Required when apply is true
+        type: string
+        default: ""
+      apply:
+        description: Run the apply job instead of the plan job
+        type: boolean
+        default: false
+      environment:
+        description: GitHub environment the apply job runs in (use it for approvals)
+        type: string
+        default: ""
+      checkov:
+        type: boolean
+        default: true
+      checkov-version:
+        type: string
+        default: 3.3.29
+      tflint:
+        type: boolean
+        default: true
+      plan:
+        description: Run the plan job. Set false to run only the gate
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      root-directory: ${{ steps.root.outputs.directory }}
+    steps:
+      - name: Select the root module
+        id: root
+        shell: bash
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          ROOTS: ${{ inputs.roots }}
+        run: |
+          first_root=$(grep -m 1 . <<<"$ROOTS")
+          echo "directory=${WORKING_DIRECTORY}/${first_root}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the gate
+        uses: dexteryo/d-github-actions/actions/terraform-gate@v0.3.0
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          roots: ${{ inputs.roots }}
+          terraform-version: ${{ inputs.terraform-version }}
+          tflint: ${{ inputs.tflint }}
+          checkov: ${{ inputs.checkov }}
+          checkov-version: ${{ inputs.checkov-version }}
+
+  plan:
+    needs: gate
+    if: ${{ !inputs.apply && inputs.plan }}
+    concurrency:
+      group: terraform-plan-${{ needs.gate.outputs.root-directory }}-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Plan
+        uses: dexteryo/d-github-actions/actions/terraform-plan@v0.3.0
+        with:
+          working-directory: ${{ needs.gate.outputs.root-directory }}
+          terraform-version: ${{ inputs.terraform-version }}
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.plan-role-to-assume }}
+          lock: "false"
+
+  apply:
+    needs: gate
+    if: ${{ inputs.apply }}
+    concurrency:
+      group: terraform-apply-${{ needs.gate.outputs.root-directory }}-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Require an apply role
+        shell: bash
+        env:
+          APPLY_ROLE: ${{ inputs.apply-role-to-assume }}
+        run: |
+          if [ -z "$APPLY_ROLE" ]; then
+            echo "::error::apply-role-to-assume is required when apply is true"
+            exit 1
+          fi
+
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Apply
+        uses: dexteryo/d-github-actions/actions/terraform-apply@v0.3.0
+        with:
+          working-directory: ${{ needs.gate.outputs.root-directory }}
+          terraform-version: ${{ inputs.terraform-version }}
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.apply-role-to-assume }}
