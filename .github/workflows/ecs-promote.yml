@@ -65,7 +65,7 @@ jobs:
     steps:
       - name: Validate environments
         id: plan
-        uses: dexteryo/d-github-actions/actions/promotion-plan@v0.2.1
+        uses: dexteryo/d-github-actions/actions/promotion-plan@v0.3.0
         with:
           environments: ${{ inputs.environments }}
           default-aws-region: ${{ inputs.aws-region }}
@@ -86,7 +86,7 @@ jobs:
 
       - name: Build image archive
         id: build
-        uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.2.1
+        uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.3.0
         with:
           ecr-repository: ${{ matrix.image.ecr-repository }}
           context: ${{ matrix.image.context || '.' }}
@@ -153,7 +153,7 @@ jobs:
 
       - name: Push by digest
         id: push
-        uses: dexteryo/d-github-actions/actions/ecr-push-image@v0.2.1
+        uses: dexteryo/d-github-actions/actions/ecr-push-image@v0.3.0
         with:
           aws-region: ${{ fromJSON(needs.plan.outputs.env-1).aws-region }}
           role-to-assume: ${{ fromJSON(needs.plan.outputs.env-1).role-to-assume }}
@@ -201,7 +201,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Deploy the pushed digests
-        uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.2.1
+        uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.0
         with:
           aws-region: ${{ fromJSON(needs.plan.outputs.env-1).aws-region }}
           role-to-assume: ${{ fromJSON(needs.plan.outputs.env-1).role-to-assume }}
@@ -238,7 +238,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Deploy the pushed digests
-        uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.2.1
+        uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.0
         with:
           aws-region: ${{ fromJSON(needs.plan.outputs.env-2).aws-region }}
           role-to-assume: ${{ fromJSON(needs.plan.outputs.env-2).role-to-assume }}
@@ -275,7 +275,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Deploy the pushed digests
-        uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.2.1
+        uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.0
         with:
           aws-region: ${{ fromJSON(needs.plan.outputs.env-3).aws-region }}
           role-to-assume: ${{ fromJSON(needs.plan.outputs.env-3).role-to-assume }}
