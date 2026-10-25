@@ -1,0 +1,2 @@
+[{"id": 301, "user": {"login": "github-actions[bot]"}, "body": "old\n<!-- d-github-actions:terraform-plan:infra/envs/example -->"}]
+[{"id": 305, "user": {"login": "github-actions[bot]"}, "body": "newer\n<!-- d-github-actions:terraform-plan:infra/envs/example -->"}]

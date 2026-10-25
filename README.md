@@ -13,7 +13,7 @@ This repository is public. It contains no account identifiers, hostnames or secr
 | `actions/ecs-deploy` | Composite action: new task definition revision with swapped images, service update, wait; optional `require-digest` |
 | `actions/promotion-plan` | Composite action: validates the ordered `environments` list of a promotion |
 | `actions/terraform-gate` | Composite action: `terraform fmt`, `terraform validate` per root module, tflint, checkov |
-| `actions/terraform-plan` | Composite action: OIDC login, `terraform plan`, summary, pull request comment edited in place |
+| `actions/terraform-plan` | Composite action: OIDC login, `terraform plan`, summary, one pull request comment per root module, edited in place |
 | `actions/terraform-apply` | Composite action: OIDC login, plan, apply the saved plan |
 | `.github/workflows/ecs-service-deploy.yml` | Reusable workflow: build N images in parallel, then deploy to one environment, optional Slack |
 | `.github/workflows/ecs-promote.yml` | Reusable workflow: build once, scan, push by digest, deploy to up to three environments in order |
@@ -22,7 +22,7 @@ This repository is public. It contains no account identifiers, hostnames or secr
 | `scripts/promotion-plan.sh`, `scripts/check-image-refs.sh` | Validation of the environment list and of digest-only image references |
 | `scripts/check-no-foreign-identifiers.sh` | Fails on a hashed deny-list of foreign identifiers and on 12-digit numbers other than `123456789012` |
 | `scripts/check-deployment.sh` | Decides from `describe-services` JSON whether the new revision rolled out (0 done, 10 keep polling, 1 failed) |
-| `scripts/terraform-plan-summary.sh`, `scripts/terraform-plan-comment.sh` | One-line plan summary from the exit code and log; markdown body of the pull request comment |
+| `scripts/terraform-plan-summary.sh`, `scripts/terraform-plan-comment.sh`, `scripts/upsert-pr-comment.sh` | One-line plan summary from the exit code and log; markdown body of the pull request comment, ending in a hidden marker; edit the comment that carries the marker, or create it |
 | `examples/caller.yml` | Copy-paste caller workflow |
 | `examples/caller-terraform.yml` | Copy-paste caller for the Terraform workflow |
 | `tests/` | Bash tests and fixtures |
@@ -94,7 +94,7 @@ Each environment has its own IAM role. The GitHub OIDC trust policy of the role 
 `terraform.yml` replaces a long inline `infra.yml`. It has three jobs.
 
 - `gate` always runs: `terraform fmt -check -recursive`, `terraform validate` in every root module (after `init -backend=false`), `tflint --init && tflint --recursive`, and `checkov -d .` with a pinned version.
-- `plan` runs when `apply` is `false` and `plan` is `true`. It assumes the plan role, runs `terraform init`, then `terraform plan -no-color -lock=false -refresh=<plan-refresh> -detailed-exitcode -out=tfplan`. The summary (`No changes.`, `Plan: N to add...`, `Changes to outputs only.` or `Plan failed (exit N).`) goes to the job summary and to a pull request comment that is edited in place (`gh pr comment --edit-last --create-if-none`). The job fails only when the plan itself failed.
+- `plan` runs when `apply` is `false` and `plan` is `true`. It assumes the plan role, runs `terraform init`, then `terraform plan -no-color -lock=false -refresh=<plan-refresh> -detailed-exitcode -out=tfplan`. The summary (`No changes.`, `Plan: N to add...`, `Changes to outputs only.` or `Plan failed (exit N).`) goes to the job summary and to a pull request comment titled after the root module. Each comment ends in a hidden marker, `<!-- d-github-actions:terraform-plan:<root> -->`; a later plan of the same root edits the newest comment by `github-actions[bot]` that carries its marker, so several plans on one pull request (one call per root) each keep their own comment. A comment by anyone else that copies the marker is never edited. The job fails only when the plan itself failed.
 - `apply` runs when `apply` is `true`, after `gate`, in the GitHub `environment` you name, so required reviewers can approve it. It assumes the apply role, plans, and applies that saved plan. It fails at once when `apply-role-to-assume` is empty.
 
 `plan` and `apply` work in the first entry of `roots`; the gate validates all of them. A caller with several environments calls the workflow once per root, one job per environment, each listing its own root first.
@@ -151,7 +151,7 @@ jobs:
       id-token: write
       contents: read
       pull-requests: write
-    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.3
+    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.4
     with:
       working-directory: infra
       roots: |
@@ -198,14 +198,14 @@ Deliberately not carried over: change-ticket automation, per-branch and protecte
 ## Using the actions directly
 
 ```yaml
-- uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.3.3
+- uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.3.4
   id: build
   with:
     aws-region: eu-west-1
     role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy
     ecr-repository: example/app
 
-- uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.3
+- uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.4
   with:
     aws-region: eu-west-1
     role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy

@@ -2,6 +2,22 @@
 
 All notable changes to this repository are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.4] - 2026-10-25
+
+### Fixed
+
+- `actions/terraform-plan`: two plans on one pull request no longer overwrite each other's comment. The comment step edited the last comment of the token's user (`gh pr comment --edit-last`), so a caller that plans two roots, two jobs with the same bot, kept only the plan that finished last. Each comment now ends in a hidden marker, `<!-- d-github-actions:terraform-plan:<key> -->`, and a later plan edits the newest comment by `comment-author` that carries its key, or creates one. A comment by anyone else that copies the marker is never edited.
+
+### Added
+
+- `actions/terraform-plan`: inputs `comment-key` (default: `working-directory`) and `comment-author` (default: `github-actions[bot]`).
+- `scripts/upsert-pr-comment.sh` with `tests/upsert-pr-comment.test.sh` and fixtures; CI runs it.
+
+### Changed
+
+- `scripts/terraform-plan-comment.sh` takes the comment key as a fourth, required argument and refuses a key outside letters, digits, `.`, `_`, `/` and `-`, so it cannot close the marker.
+- `.github/workflows/terraform.yml` calls `actions/terraform-plan` at `23ee8dd` and titles each comment `Terraform plan: <root>`. The other actions stay at `95c26ea`. The README and the examples refer to `v0.3.4`.
+
 ## [0.3.3] - 2026-10-24
 
 ### Added

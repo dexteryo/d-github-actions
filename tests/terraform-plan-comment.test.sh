@@ -19,32 +19,42 @@ expect_equal() {
   fi
 }
 
-body=$("$comment" "Plan: 1 to add, 0 to change, 0 to destroy." "$fixtures/terraform-plan-changes.log" "Terraform plan")
+body=$("$comment" "Plan: 1 to add, 0 to change, 0 to destroy." "$fixtures/terraform-plan-changes.log" "Terraform plan" "infra/envs/example")
 
 expect_equal "heading is first" "### Terraform plan" "$(sed -n 1p <<<"$body")"
 expect_equal "summary is bold" "**Plan: 1 to add, 0 to change, 0 to destroy.**" "$(sed -n 3p <<<"$body")"
 expect_equal "details block opens" "<details><summary>Plan output</summary>" "$(sed -n 5p <<<"$body")"
 expect_equal "code fence opens" '```' "$(sed -n 7p <<<"$body")"
 expect_equal "the log is included" "1" "$(grep -c '^  + logs_bucket = "example-logs"$' <<<"$body")"
-expect_equal "code fence closes" '```' "$(tail -n 2 <<<"$body" | head -n 1)"
-expect_equal "details block closes" "</details>" "$(tail -n 1 <<<"$body")"
+expect_equal "code fence closes" '```' "$(tail -n 3 <<<"$body" | head -n 1)"
+expect_equal "details block closes" "</details>" "$(tail -n 2 <<<"$body" | head -n 1)"
+expect_equal "the last line is the marker of the comment key" "<!-- d-github-actions:terraform-plan:infra/envs/example -->" "$(tail -n 1 <<<"$body")"
+
+other_body=$("$comment" "No changes." "$fixtures/terraform-plan-changes.log" "Terraform plan" "infra/envs/other")
+expect_equal "another root gets another marker" "<!-- d-github-actions:terraform-plan:infra/envs/other -->" "$(tail -n 1 <<<"$other_body")"
+
+for bad_key in "" "a -->b" "a b" 'a$(id)'; do
+  status=0
+  "$comment" "summary" "$fixtures/terraform-plan-changes.log" "Terraform plan" "$bad_key" >/dev/null 2>&1 || status=$?
+  expect_equal "a comment key '$bad_key' that could break out of the marker is rejected" "2" "$status"
+done
 
 head -c 100000 /dev/zero | tr '\0' 'a' > "$workdir/big.log"
 printf 'TAIL-MARKER\n' >> "$workdir/big.log"
-big_body=$("$comment" "Plan: 1 to add, 0 to change, 0 to destroy." "$workdir/big.log" "Terraform plan")
+big_body=$("$comment" "Plan: 1 to add, 0 to change, 0 to destroy." "$workdir/big.log" "Terraform plan" "infra")
 expect_equal "an oversized log keeps its tail" "1" "$(grep -c 'TAIL-MARKER' <<<"$big_body")"
-expect_equal "an oversized log is cut to 60000 bytes" "60000" "$(sed -n '8,$p' <<<"$big_body" | grep -v -e '^```$' -e '^</details>$' | wc -c | tr -d ' ')"
+expect_equal "an oversized log is cut to 60000 bytes" "60000" "$(sed -n '8,$p' <<<"$big_body" | grep -v -e '^```$' -e '^</details>$' -e '^<!-- d-github-actions:' | wc -c | tr -d ' ')"
 
 printf 'no trailing newline' > "$workdir/unterminated.log"
-unterminated_body=$("$comment" "summary" "$workdir/unterminated.log" "Terraform plan")
-expect_equal "an unterminated log still closes the fence on its own line" '```' "$(tail -n 2 <<<"$unterminated_body" | head -n 1)"
+unterminated_body=$("$comment" "summary" "$workdir/unterminated.log" "Terraform plan" "infra")
+expect_equal "an unterminated log still closes the fence on its own line" '```' "$(tail -n 3 <<<"$unterminated_body" | head -n 1)"
 
-awkward_body=$("$comment" '$(echo expanded) \n `id`' "$fixtures/terraform-plan-changes.log" '-n $(echo expanded)')
+awkward_body=$("$comment" '$(echo expanded) \n `id`' "$fixtures/terraform-plan-changes.log" '-n $(echo expanded)' "infra")
 expect_equal "a title that looks like an option is printed as text" '### -n $(echo expanded)' "$(sed -n 1p <<<"$awkward_body")"
 expect_equal "a summary with substitutions and escapes is printed as text" '**$(echo expanded) \n `id`**' "$(sed -n 3p <<<"$awkward_body")"
 
 status=0
-"$comment" "summary" /nonexistent.log "Terraform plan" >/dev/null 2>&1 || status=$?
+"$comment" "summary" /nonexistent.log "Terraform plan" "infra" >/dev/null 2>&1 || status=$?
 expect_equal "a missing log is rejected" "2" "$status"
 
 status=0

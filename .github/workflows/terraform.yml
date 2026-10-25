@@ -109,7 +109,7 @@ jobs:
           persist-credentials: false
 
       - name: Plan
-        uses: dexteryo/d-github-actions/actions/terraform-plan@277aa2f48ec47ec856f6c657064a599f3d97849f # v0.3.3
+        uses: dexteryo/d-github-actions/actions/terraform-plan@23ee8dd58c8e1170bea584a21e0eaa6433bc0799 # v0.3.4
         with:
           working-directory: ${{ needs.gate.outputs.root-directory }}
           terraform-version: ${{ inputs.terraform-version }}
@@ -117,6 +117,7 @@ jobs:
           role-to-assume: ${{ inputs.plan-role-to-assume }}
           lock: "false"
           refresh: ${{ inputs.plan-refresh && 'true' || 'false' }}
+          title: "Terraform plan: ${{ needs.gate.outputs.root-directory }}"
 
   apply:
     needs: gate
