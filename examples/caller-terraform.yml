@@ -20,7 +20,7 @@ jobs:
       id-token: write
       contents: read
       pull-requests: write
-    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.3
+    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.4
     with:
       working-directory: infra
       roots: |
@@ -35,7 +35,7 @@ jobs:
       id-token: write
       contents: read
       pull-requests: write
-    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.3
+    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.4
     with:
       working-directory: infra
       roots: |

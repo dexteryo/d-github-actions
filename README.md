@@ -151,7 +151,7 @@ jobs:
       id-token: write
       contents: read
       pull-requests: write
-    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.3
+    uses: dexteryo/d-github-actions/.github/workflows/terraform.yml@v0.3.4
     with:
       working-directory: infra
       roots: |
@@ -198,14 +198,14 @@ Deliberately not carried over: change-ticket automation, per-branch and protecte
 ## Using the actions directly
 
 ```yaml
-- uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.3.3
+- uses: dexteryo/d-github-actions/actions/ecr-build-push@v0.3.4
   id: build
   with:
     aws-region: eu-west-1
     role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy
     ecr-repository: example/app
 
-- uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.3
+- uses: dexteryo/d-github-actions/actions/ecs-deploy@v0.3.4
   with:
     aws-region: eu-west-1
     role-to-assume: arn:aws:iam::123456789012:role/example-github-deploy
