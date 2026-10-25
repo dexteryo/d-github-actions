@@ -23,6 +23,12 @@ inputs:
   comment-on-pull-request:
     description: Post the plan as a pull request comment, "true" or "false"
     default: "true"
+  comment-key:
+    description: Identifies this plan's comment, so several plans on one pull request each edit their own. Letters, digits, '.', '_', '/' and '-'. Defaults to working-directory
+    default: ""
+  comment-author:
+    description: Login that posts the comment; only its comments are edited. The default matches the default github-token
+    default: github-actions[bot]
   title:
     description: Heading of the summary and of the pull request comment
     default: Terraform plan
@@ -83,6 +89,7 @@ runs:
         PLAN_LOG: ${{ runner.temp }}/terraform-plan.log
         COMMENT_BODY: ${{ runner.temp }}/terraform-plan.md
         TITLE: ${{ inputs.title }}
+        COMMENT_KEY: ${{ inputs.comment-key || inputs.working-directory }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
@@ -92,7 +99,7 @@ runs:
           2) if [ "$summary" = "Changes to outputs only." ]; then result=outputs-only; else result=changes; fi ;;
           *) result=failed ;;
         esac
-        "$ACTION_PATH/../../scripts/terraform-plan-comment.sh" "$summary" "$PLAN_LOG" "$TITLE" > "$COMMENT_BODY"
+        "$ACTION_PATH/../../scripts/terraform-plan-comment.sh" "$summary" "$PLAN_LOG" "$TITLE" "$COMMENT_KEY" > "$COMMENT_BODY"
         cat "$COMMENT_BODY" >> "$GITHUB_STEP_SUMMARY"
         {
           echo "result=$result"
@@ -107,7 +114,12 @@ runs:
         PR_NUMBER: ${{ github.event.pull_request.number }}
         REPOSITORY: ${{ github.repository }}
         COMMENT_BODY: ${{ runner.temp }}/terraform-plan.md
-      run: gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body-file "$COMMENT_BODY" --edit-last --create-if-none
+        COMMENT_KEY: ${{ inputs.comment-key || inputs.working-directory }}
+        COMMENT_AUTHOR: ${{ inputs.comment-author }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        "$ACTION_PATH/../../scripts/upsert-pr-comment.sh" "$REPOSITORY" "$PR_NUMBER" \
+          "<!-- d-github-actions:terraform-plan:${COMMENT_KEY} -->" "$COMMENT_AUTHOR" "$COMMENT_BODY"
 
     - name: Fail when the plan failed
       shell: bash

@@ -30,6 +30,8 @@ jobs:
         run: tests/terraform-plan-summary.test.sh
       - name: terraform plan comment tests
         run: tests/terraform-plan-comment.test.sh
+      - name: pull request comment upsert tests
+        run: tests/upsert-pr-comment.test.sh
       - name: foreign identifier check
         run: scripts/check-no-foreign-identifiers.sh --git
       - name: foreign identifier check tests

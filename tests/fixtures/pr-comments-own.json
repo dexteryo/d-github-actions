@@ -1,0 +1,3 @@
+[{"id": 101, "user": {"login": "someone"}, "body": "looks good"},
+ {"id": 102, "user": {"login": "github-actions[bot]"}, "body": "### Terraform plan\n<!-- d-github-actions:terraform-plan:infra/envs/example -->"},
+ {"id": 103, "user": {"login": "github-actions[bot]"}, "body": "### Terraform plan\n<!-- d-github-actions:terraform-plan:infra/envs/other -->"}]
