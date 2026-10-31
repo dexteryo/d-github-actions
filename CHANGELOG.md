@@ -2,6 +2,14 @@
 
 All notable changes to this repository are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `actions/lambda-deploy`: composite action that assumes an OIDC role, zips the listed built files and updates the code of an existing Lambda function, then waits for the update. With `skip-if-missing` (default `true`) a function that Terraform has not created yet ends the step with a notice; any other AWS error fails it. File names must be relative and inside `package-directory`.
+- `scripts/lambda-deploy.sh` with `tests/lambda-deploy.test.sh` and a stub `aws` in `tests/fixtures/aws-stub.sh`; CI runs it.
+- `examples/caller-lambda.yml`.
+
 ## [0.3.4] - 2026-10-25
 
 ### Fixed
