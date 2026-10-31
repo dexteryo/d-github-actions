@@ -1,0 +1,55 @@
+name: Lambda deploy
+description: Zip built files and update the code of an existing Lambda function through GitHub OIDC, tolerating a function that Terraform has not created yet.
+
+inputs:
+  aws-region:
+    description: AWS region of the function
+    required: true
+  role-to-assume:
+    description: ARN of the IAM role to assume through GitHub OIDC. It needs lambda:GetFunction, lambda:UpdateFunctionCode and lambda:GetFunctionConfiguration on the function
+    required: true
+  function-name:
+    description: Name of the function, the function_name output of the lambda module of d-tf-modules
+    required: true
+  package-directory:
+    description: Directory that holds the built files, relative to the workspace
+    required: true
+  package-files:
+    description: Multiline list of files inside package-directory to put at the root of the zip, for example the bundled handler
+    required: true
+  architecture:
+    description: Instruction set of the function, arm64 or x86_64
+    required: false
+    default: arm64
+  skip-if-missing:
+    description: Succeed with a notice when the function does not exist yet, so a deploy can run before the first infrastructure apply
+    required: false
+    default: "true"
+  wait-for-update:
+    description: Wait until the new code is active
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        aws-region: ${{ inputs.aws-region }}
+        role-to-assume: ${{ inputs.role-to-assume }}
+
+    - name: Update the function code
+      shell: bash
+      env:
+        FUNCTION_NAME: ${{ inputs.function-name }}
+        PACKAGE_DIRECTORY: ${{ inputs.package-directory }}
+        PACKAGE_FILES: ${{ inputs.package-files }}
+        ARCHITECTURE: ${{ inputs.architecture }}
+        SKIP_IF_MISSING: ${{ inputs.skip-if-missing }}
+        WAIT_FOR_UPDATE: ${{ inputs.wait-for-update }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        mapfile -t files < <(printf '%s\n' "$PACKAGE_FILES" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d')
+        "$ACTION_PATH/../../scripts/lambda-deploy.sh" "$FUNCTION_NAME" "$PACKAGE_DIRECTORY" "$ARCHITECTURE" "$SKIP_IF_MISSING" "$WAIT_FOR_UPDATE" "${files[@]}"

@@ -11,6 +11,7 @@ This repository is public. It contains no account identifiers, hostnames or secr
 | `actions/ecr-build-push` | Composite action: OIDC login, Buildx build, push to ECR, output `repo@digest` |
 | `actions/ecr-push-image` | Composite action: load an image archive and push it to ECR, output `repo@digest` |
 | `actions/ecs-deploy` | Composite action: new task definition revision with swapped images, service update, wait; optional `require-digest` |
+| `actions/lambda-deploy` | Composite action: OIDC login, zip built files, update the code of an existing Lambda function, wait; skips with a notice while the function does not exist yet |
 | `actions/promotion-plan` | Composite action: validates the ordered `environments` list of a promotion |
 | `actions/terraform-gate` | Composite action: `terraform fmt`, `terraform validate` per root module, tflint, checkov |
 | `actions/terraform-plan` | Composite action: OIDC login, `terraform plan`, summary, one pull request comment per root module, edited in place |
@@ -21,10 +22,12 @@ This repository is public. It contains no account identifiers, hostnames or secr
 | `scripts/rewrite-task-definition.sh` | The `jq` rewrite used by `ecs-deploy` (testable locally) |
 | `scripts/promotion-plan.sh`, `scripts/check-image-refs.sh` | Validation of the environment list and of digest-only image references |
 | `scripts/check-no-foreign-identifiers.sh` | Fails on a hashed deny-list of foreign identifiers and on 12-digit numbers other than `123456789012` |
+| `scripts/lambda-deploy.sh` | Validates the inputs, zips the listed files, updates the function code and waits (testable locally with a stub `aws`) |
 | `scripts/check-deployment.sh` | Decides from `describe-services` JSON whether the new revision rolled out (0 done, 10 keep polling, 1 failed) |
 | `scripts/terraform-plan-summary.sh`, `scripts/terraform-plan-comment.sh`, `scripts/upsert-pr-comment.sh` | One-line plan summary from the exit code and log; markdown body of the pull request comment, ending in a hidden marker; edit the comment that carries the marker, or create it |
 | `examples/caller.yml` | Copy-paste caller workflow |
 | `examples/caller-terraform.yml` | Copy-paste caller for the Terraform workflow |
+| `examples/caller-lambda.yml` | Copy-paste caller job that builds a function and deploys it with `actions/lambda-deploy` |
 | `tests/` | Bash tests and fixtures |
 
 ## Quick start
@@ -88,6 +91,25 @@ The `push` job runs in the first environment, because the first environment's ro
 ### Roles per environment
 
 Each environment has its own IAM role. The GitHub OIDC trust policy of the role is scoped to the repository and the environment through the `sub` claim, `repo:<owner>/<repo>:environment:<name>`, so a job that does not run in that environment cannot assume the role. Create the roles with `modules/ci-oidc-role` of `d-tf-modules`. The role needs ECR push on the repositories (first environment) and the ECS permissions listed in the quick start.
+
+## Lambda deploy
+
+`actions/lambda-deploy` ships the code of a function that Terraform created with the `lambda` module of `d-tf-modules`. That module starts the function on a placeholder and ignores its code afterwards, so this action owns the code and a deploy never shows as drift.
+
+The caller builds its own files (the build tool differs per project), then calls the action in the same job:
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `aws-region` | yes | Region of the function |
+| `role-to-assume` | yes | OIDC role ARN. It needs `lambda:GetFunction`, `lambda:GetFunctionConfiguration` and `lambda:UpdateFunctionCode` on the function, nothing wider |
+| `function-name` | yes | The `function_name` output of the `lambda` module |
+| `package-directory` | yes | Directory with the built files, relative to the workspace |
+| `package-files` | yes | Multiline list of files in that directory, put at the root of the zip. Absolute paths and `..` are refused, so only what you list is shipped |
+| `architecture` | no | `arm64` (default) or `x86_64`; must match the function |
+| `skip-if-missing` | no | Default `true`: a function that does not exist yet ends the step with a notice, so the deploy can run before the first infrastructure apply. Any other AWS error fails the step |
+| `wait-for-update` | no | Default `true`: wait until the new code is active |
+
+The runner needs `zip`; GitHub's `ubuntu-latest` has it. See `examples/caller-lambda.yml`.
 
 ## Terraform
 

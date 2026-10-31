@@ -19,7 +19,7 @@ jobs:
       - name: actionlint
         run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 && ./actionlint -color
       - name: shellcheck
-        run: shellcheck scripts/*.sh tests/*.sh
+        run: shellcheck scripts/*.sh tests/*.sh tests/fixtures/*.sh
       - name: task definition rewrite tests
         run: tests/rewrite-task-definition.test.sh
       - name: deployment check tests
@@ -32,6 +32,8 @@ jobs:
         run: tests/terraform-plan-comment.test.sh
       - name: pull request comment upsert tests
         run: tests/upsert-pr-comment.test.sh
+      - name: lambda deploy tests
+        run: tests/lambda-deploy.test.sh
       - name: foreign identifier check
         run: scripts/check-no-foreign-identifiers.sh --git
       - name: foreign identifier check tests
