@@ -19,7 +19,7 @@ jobs:
       - name: actionlint
         run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 && ./actionlint -color
       - name: shellcheck
-        run: shellcheck scripts/*.sh tests/*.sh
+        run: shellcheck scripts/*.sh tests/*.sh tests/fixtures/*.sh
       - name: task definition rewrite tests
         run: tests/rewrite-task-definition.test.sh
       - name: deployment check tests
