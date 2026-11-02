@@ -4,6 +4,8 @@ All notable changes to this repository are documented here. The format follows [
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-02
+
 ### Added
 
 - `actions/lambda-deploy`: composite action that assumes an OIDC role, zips the listed built files and updates the code of an existing Lambda function, then waits for the update. With `skip-if-missing` (default `true`) a function that Terraform has not created yet ends the step with a notice; any other AWS error fails it. File names must be relative and inside `package-directory`.
