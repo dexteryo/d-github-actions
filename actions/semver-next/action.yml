@@ -1,0 +1,49 @@
+name: Next semantic version
+description: Work out the next X.Y.Z version of a commit from the highest version tag it contains and the Conventional Commits since that tag. Needs a checkout with full history and tags.
+
+inputs:
+  commit:
+    description: Commit to version. Defaults to the commit that triggered the run
+    required: false
+    default: ${{ github.sha }}
+  initial-version:
+    description: Version used when no version tag is reachable from the commit
+    required: false
+    default: 0.1.0
+  tag-prefix:
+    description: Prefix of version tags, for example v. Empty means tags are plain X.Y.Z
+    required: false
+    default: ""
+
+outputs:
+  previous:
+    description: Highest version tag reachable from the commit, empty when there is none
+    value: ${{ steps.next.outputs.previous }}
+  version:
+    description: Next version, X.Y.Z without the prefix
+    value: ${{ steps.next.outputs.version }}
+  tag:
+    description: Next version tag, with the prefix
+    value: ${{ steps.next.outputs.tag }}
+  bump:
+    description: major, minor, patch, initial, or none when the commit already carries a version tag
+    value: ${{ steps.next.outputs.bump }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute the next version
+      id: next
+      shell: bash
+      env:
+        COMMIT: ${{ inputs.commit }}
+        INITIAL_VERSION: ${{ inputs.initial-version }}
+        TAG_PREFIX: ${{ inputs.tag-prefix }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+          echo "::error::semver-next needs the full history: check out with fetch-depth: 0"
+          exit 1
+        fi
+        "$ACTION_PATH/../../scripts/semver-next.sh" "$COMMIT" "$INITIAL_VERSION" "$TAG_PREFIX" | tee -a "$GITHUB_OUTPUT"

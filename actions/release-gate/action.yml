@@ -1,0 +1,108 @@
+name: Release gate
+description: Refuse to release a version that was not deployed to the environment before it, then create the release tag (X.Y.Z plus a suffix such as -release) on the same commit.
+
+inputs:
+  version:
+    description: Version to release, X.Y.Z without prefix or suffix
+    required: true
+  environment:
+    description: GitHub environment that must hold a successful deployment of the version's commit, for example staging
+    required: true
+  tag-prefix:
+    description: Prefix of version tags, for example v
+    required: false
+    default: ""
+  release-suffix:
+    description: Suffix that turns a version tag into its release tag
+    required: false
+    default: -release
+  ecr-repository:
+    description: Also require an image tagged with the version in this ECR repository. Empty skips the check
+    required: false
+    default: ""
+  aws-region:
+    description: AWS region of the ECR repository; required with ecr-repository
+    required: false
+    default: ""
+  role-to-assume:
+    description: OIDC role that may call ecr:DescribeImages on the repository; required with ecr-repository
+    required: false
+    default: ""
+  create-tag:
+    description: Create the release tag once every check passes
+    required: false
+    default: "true"
+  github-token:
+    description: Token with deployments read and, to create the tag, contents write
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  sha:
+    description: Commit of the version
+    value: ${{ steps.gate.outputs.sha }}
+  base-tag:
+    description: Version tag that was checked
+    value: ${{ steps.gate.outputs.base-tag }}
+  release-tag:
+    description: Release tag
+    value: ${{ steps.gate.outputs.release-tag }}
+  created:
+    description: true when this run created the release tag
+    value: ${{ steps.tag.outputs.created || 'false' }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the ECR inputs
+      if: inputs.ecr-repository != ''
+      shell: bash
+      env:
+        AWS_REGION_INPUT: ${{ inputs.aws-region }}
+        ROLE_TO_ASSUME: ${{ inputs.role-to-assume }}
+      run: |
+        [ -n "$AWS_REGION_INPUT" ] && [ -n "$ROLE_TO_ASSUME" ] || { echo "::error::ecr-repository needs aws-region and role-to-assume"; exit 1; }
+
+    - name: Configure AWS credentials
+      if: inputs.ecr-repository != ''
+      uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        aws-region: ${{ inputs.aws-region }}
+        role-to-assume: ${{ inputs.role-to-assume }}
+
+    - name: Check the version was deployed
+      id: gate
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPOSITORY: ${{ github.repository }}
+        VERSION: ${{ inputs.version }}
+        TAG_PREFIX: ${{ inputs.tag-prefix }}
+        RELEASE_SUFFIX: ${{ inputs.release-suffix }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        ECR_REPOSITORY: ${{ inputs.ecr-repository }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        args=("$REPOSITORY" "$VERSION" "$TAG_PREFIX" "$RELEASE_SUFFIX" "$ENVIRONMENT")
+        [ -z "$ECR_REPOSITORY" ] || args+=("$ECR_REPOSITORY")
+        "$ACTION_PATH/../../scripts/release-gate.sh" "${args[@]}" | tee -a "$GITHUB_OUTPUT"
+
+    - name: Create the release tag
+      id: tag
+      if: inputs.create-tag == 'true' && steps.gate.outputs.release-exists == 'false'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPOSITORY: ${{ github.repository }}
+        RELEASE_TAG: ${{ steps.gate.outputs.release-tag }}
+        SHA: ${{ steps.gate.outputs.sha }}
+      run: |
+        set -euo pipefail
+        if gh api -X POST "repos/$REPOSITORY/git/refs" -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$SHA" > /dev/null; then
+          echo "created=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        existing=$(gh api "repos/$REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq .object.sha)
+        [ "$existing" = "$SHA" ] || { echo "::error::$RELEASE_TAG appeared on $existing while this run checked $SHA"; exit 1; }
+        echo "created=false" >> "$GITHUB_OUTPUT"
