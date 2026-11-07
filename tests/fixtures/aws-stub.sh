@@ -28,6 +28,19 @@ case "$1 $2" in
     echo "{}"
     ;;
   "lambda wait") ;;
+  "ecr describe-images")
+    case "$AWS_STUB_MODE" in
+      exists) echo "sha256:1111111111111111111111111111111111111111111111111111111111111111" ;;
+      missing)
+        echo "An error occurred (ImageNotFoundException) when calling the DescribeImages operation: The image with imageId {imageTag:'0.0.0'} does not exist" >&2
+        exit 254
+        ;;
+      denied)
+        echo "An error occurred (AccessDeniedException) when calling the DescribeImages operation: not authorized" >&2
+        exit 254
+        ;;
+    esac
+    ;;
   *)
     echo "unexpected aws call: $*" >&2
     exit 1

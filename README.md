@@ -13,21 +13,26 @@ This repository is public. It contains no account identifiers, hostnames or secr
 | `actions/ecs-deploy` | Composite action: new task definition revision with swapped images, service update, wait; optional `require-digest` |
 | `actions/lambda-deploy` | Composite action: OIDC login, zip built files, update the code of an existing Lambda function, wait; skips with a notice while the function does not exist yet |
 | `actions/promotion-plan` | Composite action: validates the ordered `environments` list of a promotion |
+| `actions/semver-next` | Composite action: next `X.Y.Z` of a commit from the highest version tag it contains and the Conventional Commits since |
+| `actions/release-gate` | Composite action: refuses to release a version with no successful deployment to the environment before it (optionally no image in ECR), then creates `X.Y.Z-release` on the same commit |
 | `actions/terraform-gate` | Composite action: `terraform fmt`, `terraform validate` per root module, tflint, checkov |
 | `actions/terraform-plan` | Composite action: OIDC login, `terraform plan`, summary, one pull request comment per root module, edited in place |
 | `actions/terraform-apply` | Composite action: OIDC login, plan, apply the saved plan |
 | `.github/workflows/ecs-service-deploy.yml` | Reusable workflow: build N images in parallel, then deploy to one environment, optional Slack |
 | `.github/workflows/ecs-promote.yml` | Reusable workflow: build once, scan, push by digest, deploy to up to three environments in order |
 | `.github/workflows/terraform.yml` | Reusable workflow: gate, then plan (read-only) or apply (write role, optional environment approval) |
+| `.github/workflows/release-tag.yml` | Reusable workflow: tag every merged commit with its next version |
 | `scripts/rewrite-task-definition.sh` | The `jq` rewrite used by `ecs-deploy` (testable locally) |
 | `scripts/promotion-plan.sh`, `scripts/check-image-refs.sh` | Validation of the environment list and of digest-only image references |
 | `scripts/check-no-foreign-identifiers.sh` | Fails on a hashed deny-list of foreign identifiers and on 12-digit numbers other than `123456789012` |
 | `scripts/lambda-deploy.sh` | Validates the inputs, zips the listed files, updates the function code and waits (testable locally with a stub `aws`) |
+| `scripts/semver-next.sh`, `scripts/release-gate.sh` | The version arithmetic and the release checks behind those actions (testable locally with a stub `gh` and `aws`) |
 | `scripts/check-deployment.sh` | Decides from `describe-services` JSON whether the new revision rolled out (0 done, 10 keep polling, 1 failed) |
 | `scripts/terraform-plan-summary.sh`, `scripts/terraform-plan-comment.sh`, `scripts/upsert-pr-comment.sh` | One-line plan summary from the exit code and log; markdown body of the pull request comment, ending in a hidden marker; edit the comment that carries the marker, or create it |
 | `examples/caller.yml` | Copy-paste caller workflow |
 | `examples/caller-terraform.yml` | Copy-paste caller for the Terraform workflow |
 | `examples/caller-lambda.yml` | Copy-paste caller job that builds a function and deploys it with `actions/lambda-deploy` |
+| `examples/caller-release.yml` | Copy-paste caller: tag on merge, staging from a version tag, production through the release gate |
 | `tests/` | Bash tests and fixtures |
 
 ## Quick start
@@ -110,6 +115,60 @@ The caller builds its own files (the build tool differs per project), then calls
 | `wait-for-update` | no | Default `true`: wait until the new code is active |
 
 The runner needs `zip`; GitHub's `ubuntu-latest` has it. See `examples/caller-lambda.yml`.
+
+## Release versioning
+
+Three rules, one per stage:
+
+1. Every merge to the default branch gets a version tag, `X.Y.Z`, from `.github/workflows/release-tag.yml`.
+2. Staging deploys only from a version tag. The caller's staging job refuses any other ref, so someone picks the tag under "Use workflow from".
+3. Production deploys only a version that staging already ran, through `actions/release-gate`, which then marks it with `X.Y.Z-release` on the same commit.
+
+### How the version is chosen
+
+`actions/semver-next` takes the highest `X.Y.Z` tag reachable from the commit and reads every non-merge commit since:
+
+| Commits since the last version | Bump | 1.9.1 becomes |
+| --- | --- | --- |
+| a type with `!` (`feat!:`, `fix(api)!:`) or a `BREAKING CHANGE:` footer | major | 2.0.0 |
+| at least one `feat:` or `feat(scope):` | minor | 1.10.0 |
+| anything else, Conventional or not | patch | 1.9.2 |
+
+Merge commit subjects are skipped, so the commits a pull request brings decide, not the title GitHub writes on the merge. Tags with anything after `X.Y.Z` (such as `1.9.1-release`) never count as a version. Versions compare numerically, so `1.10.0` is above `1.9.0`. A repository with no version tag starts at `initial-version` (default `0.1.0`), and a commit that already has a version keeps it, so a re-run creates nothing.
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `initial-version` | `0.1.0` | First version, when no tag exists |
+| `tag-prefix` | empty | Prefix of version tags, for example `v` for `v1.2.3`. Only prefixed tags then count |
+
+`release-tag.yml` needs `contents: write` from its caller and refuses to run on anything but a push to a branch. Runs are serialised per repository. When several merges land while one run is tagging, GitHub keeps only the newest waiting run, so the merges in between share the next version rather than getting one each.
+
+A tag created with `GITHUB_TOKEN` does not start other workflows. That suits rule 2, which is a deliberate act; a caller that wants every tag to deploy staging needs a GitHub App token.
+
+### The release gate
+
+`actions/release-gate` takes a version (`1.9.1`, without the suffix) and checks, in order:
+
+1. The tag `1.9.1` exists. An annotated tag is followed to its commit.
+2. `1.9.1-release`, if it exists already, is on the same commit. A re-run then passes without creating anything.
+3. GitHub recorded a successful deployment of that commit to `environment` (for example `staging`). Every job with `environment:` records one, so this covers deploys with no image, such as a static site.
+4. With `ecr-repository`, the image tagged `1.9.1` exists there. Staging must push the image with the version as a tag for this to pass.
+
+When all pass and `create-tag` is `true` (the default), it creates `1.9.1-release` on the commit. A failed check stops before the tag exists, so a release tag always means "this ran in staging first".
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `version` | yes | `X.Y.Z` |
+| `environment` | yes | GitHub environment that must have deployed the version |
+| `tag-prefix` | no | As in `semver-next` |
+| `release-suffix` | no | Default `-release` |
+| `ecr-repository`, `aws-region`, `role-to-assume` | no | All three, or none. The role needs `ecr:DescribeImages` on the repository |
+| `create-tag` | no | Default `true` |
+| `github-token` | no | Default `github.token`. The job needs `deployments: read`, and `contents: write` to create the tag |
+
+The deployment check passes when any deployment of the commit to the environment ended in `success`. It cannot tell which job a deployment came from, so a run where one deploy job failed and another succeeded still counts; the ECR check covers the image on its own.
+
+Semantic Versioning ranks `1.9.1-release` below `1.9.1`, because anything after a `-` is a pre-release. The actions never compare the two kinds of tag, but a tool that sorts tags by semver will show the release tag before its version.
 
 ## Terraform
 
