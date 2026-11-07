@@ -4,6 +4,14 @@ All notable changes to this repository are documented here. The format follows [
 
 ## [Unreleased]
 
+### Added
+
+- `actions/semver-next`: composite action that works out the next `X.Y.Z` of a commit from the highest version tag reachable from it and the Conventional Commits since. A `!` after the type or a `BREAKING CHANGE:` footer bumps major, a `feat` bumps minor, anything else bumps patch. Merge commit subjects and tags with a suffix (`1.9.1-release`) are ignored; versions compare numerically. Inputs `commit`, `initial-version` (default `0.1.0`) and `tag-prefix` (default empty).
+- `.github/workflows/release-tag.yml`: reusable workflow that tags each pushed commit with the version from `semver-next`, through the Git refs API. It refuses anything but a push to a branch, serialises runs per repository and creates nothing when the commit already has a version. It calls `actions/semver-next` at `b6ca439`.
+- `actions/release-gate`: composite action that refuses to release a version unless its tag exists, any existing release tag sits on the same commit, GitHub recorded a successful deployment of the commit to a named environment and, optionally, an image tagged with the version exists in ECR. It then creates the release tag (`X.Y.Z-release` by default) on that commit.
+- `scripts/semver-next.sh` and `scripts/release-gate.sh`, with `tests/semver-next.test.sh` (temporary Git repositories) and `tests/release-gate.test.sh` (a stub `gh`); `tests/fixtures/aws-stub.sh` answers `ecr describe-images`. CI runs both.
+- `examples/caller-release.yml`.
+
 ## [0.4.0] - 2026-11-02
 
 ### Added

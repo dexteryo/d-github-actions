@@ -1,0 +1,81 @@
+name: Release tag
+
+on:
+  workflow_call:
+    inputs:
+      initial-version:
+        description: Version of the first tag, when the repository has none
+        type: string
+        default: 0.1.0
+      tag-prefix:
+        description: Prefix of version tags, for example v. Empty means plain X.Y.Z
+        type: string
+        default: ""
+    outputs:
+      version:
+        description: Version of the commit, X.Y.Z
+        value: ${{ jobs.tag.outputs.version }}
+      tag:
+        description: Version tag of the commit
+        value: ${{ jobs.tag.outputs.tag }}
+      created:
+        description: true when this run created the tag
+        value: ${{ jobs.tag.outputs.created }}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-tag-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag the version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      tag: ${{ steps.next.outputs.tag }}
+      created: ${{ steps.create.outputs.created || 'false' }}
+    steps:
+      - name: Refuse anything but a branch push
+        if: github.event_name != 'push' || github.ref_type != 'branch'
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error::release-tag versions merged commits; call it on push to a branch, not on $EVENT of $REF"
+          exit 1
+
+      - name: Check out with history and tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Work out the version
+        id: next
+        uses: dexteryo/d-github-actions/actions/semver-next@b6ca4398506eb24e4290b269ba8ce5b64a22fbdf # v0.5.0
+        with:
+          commit: ${{ github.sha }}
+          initial-version: ${{ inputs.initial-version }}
+          tag-prefix: ${{ inputs.tag-prefix }}
+
+      - name: Create the tag
+        id: create
+        if: steps.next.outputs.bump != 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ steps.next.outputs.tag }}
+          BUMP: ${{ steps.next.outputs.bump }}
+          PREVIOUS: ${{ steps.next.outputs.previous }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          gh api -X POST "repos/$REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$SHA" > /dev/null
+          echo "created=true" >> "$GITHUB_OUTPUT"
+          echo "### Tagged $TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "${PREVIOUS:-no earlier version} → $TAG ($BUMP) on \`${SHA:0:7}\`" >> "$GITHUB_STEP_SUMMARY"

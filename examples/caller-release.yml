@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: staging deploys the tag this run uses; production releases the version below
+        type: choice
+        options: [staging, production]
+        default: staging
+      version:
+        description: Version to release to production, X.Y.Z
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    if: github.event_name == 'push'
+    uses: dexteryo/d-github-actions/.github/workflows/release-tag.yml@v0.5.0
+    permissions:
+      contents: write
+
+  staging:
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Refuse anything but a version tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          [[ "$REF_TYPE" == tag && "$REF_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::staging deploys from a version tag; pick one under 'Use workflow from'"; exit 1; }
+      - name: Build, push and deploy
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: echo "build, push the image tagged $VERSION, deploy to staging"
+
+  production-gate:
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      deployments: read
+      id-token: write
+    outputs:
+      sha: ${{ steps.gate.outputs.sha }}
+      release-tag: ${{ steps.gate.outputs.release-tag }}
+    steps:
+      - id: gate
+        uses: dexteryo/d-github-actions/actions/release-gate@v0.5.0
+        with:
+          version: ${{ inputs.version }}
+          environment: staging
+          ecr-repository: example/app
+          aws-region: eu-west-1
+          role-to-assume: arn:aws:iam::123456789012:role/example-github-release-check
+
+  production:
+    needs: production-gate
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.production-gate.outputs.sha }}
+      - name: Deploy
+        env:
+          RELEASE_TAG: ${{ needs.production-gate.outputs.release-tag }}
+        run: echo "deploy $RELEASE_TAG to production"
