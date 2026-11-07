@@ -4,6 +4,10 @@ All notable changes to this repository are documented here. The format follows [
 
 ## [Unreleased]
 
+### Added
+
+- `.github/workflows/terraform.yml`: a `ref` input, default empty, that the gate, plan and apply jobs check out. Empty keeps the old behaviour, the commit that started the run. A caller on a protected branch can now apply a release tag's commit while its OIDC subject stays the branch the role trusts.
+
 ## [0.5.0] - 2026-11-07
 
 ### Added
