@@ -196,6 +196,7 @@ The plan and apply jobs each have a concurrency group made of the job kind, the 
 | `checkov-version` | no | Default `3.3.29` |
 | `plan` | no | Default `true`; set `false` to run only the gate |
 | `plan-refresh` | no | Default `true`; `false` plans without refreshing the state, see below |
+| `ref` | no | Commit, branch or tag that every job checks out. Default: the commit that started the run. Lets a run on a protected branch, whose OIDC subject the role trusts, apply a release tag's commit |
 
 ### Two roles
 

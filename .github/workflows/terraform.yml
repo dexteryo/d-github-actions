@@ -50,6 +50,10 @@ on:
         description: Refresh the state before the plan job plans. Set false on pull requests when the plan role cannot read every managed resource, for example secret values
         type: boolean
         default: true
+      ref:
+        description: Commit, branch or tag every job checks out. Empty checks out the commit that started the run
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -79,6 +83,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref }}
 
       - name: Run the gate
         uses: dexteryo/d-github-actions/actions/terraform-gate@95c26eacbf6437bc837b79f0c4be714d0ecd0629 # v0.3.0
@@ -107,6 +112,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref }}
 
       - name: Plan
         uses: dexteryo/d-github-actions/actions/terraform-plan@23ee8dd58c8e1170bea584a21e0eaa6433bc0799 # v0.3.4
@@ -146,6 +152,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref }}
 
       - name: Apply
         uses: dexteryo/d-github-actions/actions/terraform-apply@95c26eacbf6437bc837b79f0c4be714d0ecd0629 # v0.3.0
