@@ -4,6 +4,8 @@ All notable changes to this repository are documented here. The format follows [
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-07
+
 ### Added
 
 - `actions/semver-next`: composite action that works out the next `X.Y.Z` of a commit from the highest version tag reachable from it and the Conventional Commits since. A `!` after the type or a `BREAKING CHANGE:` footer bumps major, a `feat` bumps minor, anything else bumps patch. Merge commit subjects and tags with a suffix (`1.9.1-release`) are ignored; versions compare numerically. Inputs `commit`, `initial-version` (default `0.1.0`) and `tag-prefix` (default empty).
