@@ -12,6 +12,7 @@ This repository is public. It contains no account identifiers, hostnames or secr
 | `actions/ecr-push-image` | Composite action: load an image archive and push it to ECR, output `repo@digest` |
 | `actions/ecs-deploy` | Composite action: new task definition revision with swapped images, service update, wait; optional `require-digest` |
 | `actions/lambda-deploy` | Composite action: OIDC login, zip built files, update the code of an existing Lambda function, wait; skips with a notice while the function does not exist yet |
+| `actions/env-power` | Composite action: OIDC login, then start or stop an environment now by replaying the targets of its `env-schedule` schedules |
 | `actions/promotion-plan` | Composite action: validates the ordered `environments` list of a promotion |
 | `actions/semver-next` | Composite action: next `X.Y.Z` of a commit from the highest version tag it contains and the Conventional Commits since |
 | `actions/release-gate` | Composite action: refuses to release a version with no successful deployment to the environment before it (optionally no image in ECR), then creates `X.Y.Z-release` on the same commit |
@@ -21,17 +22,20 @@ This repository is public. It contains no account identifiers, hostnames or secr
 | `.github/workflows/ecs-service-deploy.yml` | Reusable workflow: build N images in parallel, then deploy to one environment, optional Slack |
 | `.github/workflows/ecs-promote.yml` | Reusable workflow: build once, scan, push by digest, deploy to up to three environments in order |
 | `.github/workflows/terraform.yml` | Reusable workflow: gate, then plan (read-only) or apply (write role, optional environment approval) |
+| `.github/workflows/env-power.yml` | Reusable workflow: start or stop one environment in its GitHub environment |
 | `.github/workflows/release-tag.yml` | Reusable workflow: tag every merged commit with its next version |
 | `scripts/rewrite-task-definition.sh` | The `jq` rewrite used by `ecs-deploy` (testable locally) |
 | `scripts/promotion-plan.sh`, `scripts/check-image-refs.sh` | Validation of the environment list and of digest-only image references |
 | `scripts/check-no-foreign-identifiers.sh` | Fails on a hashed deny-list of foreign identifiers and on 12-digit numbers other than `123456789012` |
 | `scripts/lambda-deploy.sh` | Validates the inputs, zips the listed files, updates the function code and waits (testable locally with a stub `aws`) |
+| `scripts/env-power.sh` | Reads a schedule group, starts databases before services or stops services before databases, waits (testable locally with a stub `aws`) |
 | `scripts/semver-next.sh`, `scripts/release-gate.sh` | The version arithmetic and the release checks behind those actions (testable locally with a stub `gh` and `aws`) |
 | `scripts/check-deployment.sh` | Decides from `describe-services` JSON whether the new revision rolled out (0 done, 10 keep polling, 1 failed) |
 | `scripts/terraform-plan-summary.sh`, `scripts/terraform-plan-comment.sh`, `scripts/upsert-pr-comment.sh` | One-line plan summary from the exit code and log; markdown body of the pull request comment, ending in a hidden marker; edit the comment that carries the marker, or create it |
 | `examples/caller.yml` | Copy-paste caller workflow |
 | `examples/caller-terraform.yml` | Copy-paste caller for the Terraform workflow |
 | `examples/caller-lambda.yml` | Copy-paste caller job that builds a function and deploys it with `actions/lambda-deploy` |
+| `examples/caller-env-power.yml` | Copy-paste caller: a start/stop button in the Actions tab |
 | `examples/caller-release.yml` | Copy-paste caller: tag on merge, staging from a version tag, production through the release gate |
 | `tests/` | Bash tests and fixtures |
 
@@ -115,6 +119,29 @@ The caller builds its own files (the build tool differs per project), then calls
 | `wait-for-update` | no | Default `true`: wait until the new code is active |
 
 The runner needs `zip`; GitHub's `ubuntu-latest` has it. See `examples/caller-lambda.yml`.
+
+## Environment power
+
+The `env-schedule` module of `d-tf-modules` stops a non-production environment on a cron and, optionally, starts it on another. `.github/workflows/env-power.yml` does the same on demand, for an environment that only runs when someone needs it.
+
+It does not keep its own list of services and databases. It reads the schedules in the group, takes the `start-*` or `stop-*` ones, and replays their targets now:
+
+1. Start: every stopped database starts, the job waits until all are available, then every service gets the desired count of its start schedule and the job waits for the services to settle.
+2. Stop: every service scales to zero, then every available database stops. The job does not wait for databases to finish stopping.
+
+The job checks every database before it changes anything. One already in the wanted state is left alone; one in any other state (backing up, modifying) fails the job with nothing changed.
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `environment` | yes | GitHub environment of the job. The operator role trusts exactly this environment, so its protection rules gate the button |
+| `aws-region` | yes | Region of the schedule group |
+| `role-to-assume` | yes | The `operator_role_arn` output of `env-schedule` |
+| `schedule-group` | yes | The `schedule_group_name` output of `env-schedule` |
+| `action` | yes | `start` or `stop` |
+| `wait` | no | Default `true`: wait for databases and services |
+| `timeout-minutes` | no | Default `30`. A database takes about 5 to 10 minutes to start |
+
+Runs for the same group queue rather than overlap. See `examples/caller-env-power.yml`.
 
 ## Release versioning
 
