@@ -41,6 +41,37 @@ case "$1 $2" in
         ;;
     esac
     ;;
+  "scheduler list-schedules")
+    case "$AWS_STUB_MODE" in
+      empty) echo "None" ;;
+      denied)
+        echo "An error occurred (AccessDeniedException) when calling the ListSchedules operation: not authorized" >&2
+        exit 254
+        ;;
+      services-only) printf 'example-int-start-svc-api\texample-int-stop-svc-api\n' ;;
+      *) printf 'example-int-start-db-main\texample-int-start-svc-api\texample-int-start-svc-auth\texample-int-stop-db-main\texample-int-stop-svc-api\texample-int-stop-svc-auth\n' ;;
+    esac
+    ;;
+  "scheduler get-schedule")
+    name=""
+    previous=""
+    for argument in "$@"; do
+      if [ "$previous" = "--name" ]; then name=$argument; fi
+      previous=$argument
+    done
+    case "$name" in
+      *-db-main) echo '{"DbInstanceIdentifier":"example-int-postgres"}' ;;
+      *-start-svc-api) echo '{"Cluster":"example-int","Service":"example-api-int","DesiredCount":2}' ;;
+      *-stop-svc-api) echo '{"Cluster":"example-int","Service":"example-api-int","DesiredCount":0}' ;;
+      *-start-svc-auth) echo '{"Cluster":"example-int","Service":"example-auth-int","DesiredCount":1}' ;;
+      *-stop-svc-auth) echo '{"Cluster":"example-int","Service":"example-auth-int","DesiredCount":0}' ;;
+    esac
+    ;;
+  "rds describe-db-instances") echo "${AWS_STUB_DB_STATUS:-available}" ;;
+  "rds start-db-instance" | "rds stop-db-instance") echo "{}" ;;
+  "rds wait") ;;
+  "ecs update-service") echo "example" ;;
+  "ecs wait") ;;
   *)
     echo "unexpected aws call: $*" >&2
     exit 1

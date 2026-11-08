@@ -38,6 +38,8 @@ jobs:
         run: tests/semver-next.test.sh
       - name: release gate tests
         run: tests/release-gate.test.sh
+      - name: env power tests
+        run: tests/env-power.test.sh
       - name: foreign identifier check
         run: scripts/check-no-foreign-identifiers.sh --git
       - name: foreign identifier check tests
