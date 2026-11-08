@@ -4,6 +4,8 @@ All notable changes to this repository are documented here. The format follows [
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-08
+
 ### Added
 
 - `actions/env-power`: composite action that assumes the `env-schedule` operator role through OIDC and starts or stops an environment now. It reads the schedules of the group and replays the `start-*` or `stop-*` targets: databases start and become available before services scale up, services scale to zero before databases stop. The state of every database is checked first: one already in the wanted state is left alone, and one in any other state fails the run before any database or service changes.
