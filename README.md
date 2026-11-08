@@ -129,7 +129,7 @@ It does not keep its own list of services and databases. It reads the schedules 
 1. Start: every stopped database starts, the job waits until all are available, then every service gets the desired count of its start schedule and the job waits for the services to settle.
 2. Stop: every service scales to zero, then every available database stops. The job does not wait for databases to finish stopping.
 
-A database already in the wanted state is left alone; one in any other state (backing up, modifying) fails the job before services change.
+The job checks every database before it changes anything. One already in the wanted state is left alone; one in any other state (backing up, modifying) fails the job with nothing changed.
 
 | Input | Required | Description |
 | --- | --- | --- |

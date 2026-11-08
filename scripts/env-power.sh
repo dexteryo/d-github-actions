@@ -59,21 +59,29 @@ database_status() {
   aws rds describe-db-instances --db-instance-identifier "$1" --query 'DBInstances[0].DBInstanceStatus' --output text
 }
 
-start_databases() {
-  local identifier status
+pending_databases=()
+
+check_databases() {
+  local identifier status verb=started
+  [ "$action" = start ] || verb=stopped
   for identifier in "${databases[@]}"; do
     status=$(database_status "$identifier")
-    case "$status" in
-      stopped)
-        echo "starting database $identifier"
-        aws rds start-db-instance --db-instance-identifier "$identifier" > /dev/null
-        ;;
-      available | starting) echo "database $identifier is already $status" ;;
+    case "$action:$status" in
+      start:stopped | stop:available) pending_databases+=("$identifier") ;;
+      start:available | start:starting | stop:stopped | stop:stopping) echo "database $identifier is already $status" ;;
       *)
-        echo "database $identifier is $status and cannot be started now" >&2
+        echo "database $identifier is $status and cannot be $verb now; nothing was changed" >&2
         exit 1
         ;;
     esac
+  done
+}
+
+start_databases() {
+  local identifier
+  for identifier in "${pending_databases[@]}"; do
+    echo "starting database $identifier"
+    aws rds start-db-instance --db-instance-identifier "$identifier" > /dev/null
   done
   if [ "$wait_for_targets" = true ]; then
     for identifier in "${databases[@]}"; do
@@ -84,20 +92,10 @@ start_databases() {
 }
 
 stop_databases() {
-  local identifier status
-  for identifier in "${databases[@]}"; do
-    status=$(database_status "$identifier")
-    case "$status" in
-      available)
-        echo "stopping database $identifier"
-        aws rds stop-db-instance --db-instance-identifier "$identifier" > /dev/null
-        ;;
-      stopped | stopping) echo "database $identifier is already $status" ;;
-      *)
-        echo "database $identifier is $status and cannot be stopped now" >&2
-        exit 1
-        ;;
-    esac
+  local identifier
+  for identifier in "${pending_databases[@]}"; do
+    echo "stopping database $identifier"
+    aws rds stop-db-instance --db-instance-identifier "$identifier" > /dev/null
   done
 }
 
@@ -117,12 +115,14 @@ scale_services() {
   fi
 }
 
+[ "${#databases[@]}" -eq 0 ] || check_databases
+
 if [ "$action" = start ]; then
   [ "${#databases[@]}" -eq 0 ] || start_databases
   [ "${#services[@]}" -eq 0 ] || scale_services
 else
   [ "${#services[@]}" -eq 0 ] || scale_services
-  [ "${#databases[@]}" -eq 0 ] || stop_databases
+  [ "${#pending_databases[@]}" -eq 0 ] || stop_databases
 fi
 
 echo "$group: $action done"

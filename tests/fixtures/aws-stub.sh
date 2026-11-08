@@ -49,6 +49,7 @@ case "$1 $2" in
         exit 254
         ;;
       services-only) printf 'example-int-start-svc-api\texample-int-stop-svc-api\n' ;;
+      two-databases) printf 'example-int-start-db-ledger\texample-int-start-db-main\texample-int-start-svc-api\texample-int-stop-db-ledger\texample-int-stop-db-main\texample-int-stop-svc-api\n' ;;
       *) printf 'example-int-start-db-main\texample-int-start-svc-api\texample-int-start-svc-auth\texample-int-stop-db-main\texample-int-stop-svc-api\texample-int-stop-svc-auth\n' ;;
     esac
     ;;
@@ -60,14 +61,21 @@ case "$1 $2" in
       previous=$argument
     done
     case "$name" in
-      *-db-main) echo '{"DbInstanceIdentifier":"example-int-postgres"}' ;;
+      *-start-db-main) echo '{"DbInstanceIdentifier":"example-int-postgres"}' ;;
+      *-stop-db-main) echo '{"DbInstanceIdentifier":"example-int-postgres"}' ;;
+      *-db-ledger) echo '{"DbInstanceIdentifier":"example-int-ledger"}' ;;
       *-start-svc-api) echo '{"Cluster":"example-int","Service":"example-api-int","DesiredCount":2}' ;;
       *-stop-svc-api) echo '{"Cluster":"example-int","Service":"example-api-int","DesiredCount":0}' ;;
       *-start-svc-auth) echo '{"Cluster":"example-int","Service":"example-auth-int","DesiredCount":1}' ;;
       *-stop-svc-auth) echo '{"Cluster":"example-int","Service":"example-auth-int","DesiredCount":0}' ;;
     esac
     ;;
-  "rds describe-db-instances") echo "${AWS_STUB_DB_STATUS:-available}" ;;
+  "rds describe-db-instances")
+    case "$*" in
+      *example-int-postgres*) echo "${AWS_STUB_SECOND_DB_STATUS:-${AWS_STUB_DB_STATUS:-available}}" ;;
+      *) echo "${AWS_STUB_DB_STATUS:-available}" ;;
+    esac
+    ;;
   "rds start-db-instance" | "rds stop-db-instance") echo "{}" ;;
   "rds wait") ;;
   "ecs update-service") echo "example" ;;

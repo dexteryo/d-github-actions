@@ -84,11 +84,28 @@ expect_log "services scale to zero" "ecs update-service --cluster example-int --
 expect_log "the database is stopped" "rds stop-db-instance --db-instance-identifier example-int-postgres" "$AWS_STUB_LOG"
 expect_order "services stop before the database" "ecs update-service" "rds stop-db-instance" "$AWS_STUB_LOG"
 
+expect_no_log "start schedules are not read on stop" "get-schedule --group-name example-int --name example-int-start" "$AWS_STUB_LOG"
+
 expect_exit "a stopped database is not stopped again" 0 full stopped example-int stop false
 expect_no_log "no stop call for a stopped database" "rds stop-db-instance" "$AWS_STUB_LOG"
 
 expect_exit "a database in another state fails the start" 1 full backing-up example-int start true
 expect_no_log "services are not started when the database cannot start" "ecs update-service" "$AWS_STUB_LOG"
+
+export AWS_STUB_SECOND_DB_STATUS=backing-up
+expect_exit "a start fails when any database cannot start" 1 two-databases stopped example-int start true
+expect_no_log "no database starts when a later one cannot" "rds start-db-instance" "$AWS_STUB_LOG"
+expect_log "the error names the database" "example-int-postgres is backing-up and cannot be started now" "$work/err.txt"
+
+expect_exit "a stop fails when any database cannot stop" 1 two-databases available example-int stop true
+expect_no_log "no service scales down when a database cannot stop" "ecs update-service" "$AWS_STUB_LOG"
+expect_no_log "no database stops when a later one cannot" "rds stop-db-instance" "$AWS_STUB_LOG"
+expect_log "the stop error reads correctly" "cannot be stopped now; nothing was changed" "$work/err.txt"
+unset AWS_STUB_SECOND_DB_STATUS
+
+expect_exit "two stopped databases both start" 0 two-databases stopped example-int start false
+expect_log "the first database starts" "rds start-db-instance --db-instance-identifier example-int-ledger" "$AWS_STUB_LOG"
+expect_log "the second database starts" "rds start-db-instance --db-instance-identifier example-int-postgres" "$AWS_STUB_LOG"
 
 expect_exit "a group with services only works" 0 services-only available example-int start false
 expect_no_log "no database calls without database schedules" "rds " "$AWS_STUB_LOG"
