@@ -46,7 +46,7 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - name: Start or stop
-        uses: dexteryo/d-github-actions/actions/env-power@55b45040608be0047aa12393a8c0a3fa467c7cd3 # v0.7.0
+        uses: dexteryo/d-github-actions/actions/env-power@7456d6f42c305fc6ac9a7a1f924a1e628e5968db # v0.7.0
         with:
           aws-region: ${{ inputs.aws-region }}
           role-to-assume: ${{ inputs.role-to-assume }}
