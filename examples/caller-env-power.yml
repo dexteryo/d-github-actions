@@ -1,0 +1,27 @@
+name: Environment power
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [integration, staging]
+      action:
+        type: choice
+        options: [start, stop]
+
+permissions:
+  contents: read
+
+jobs:
+  power:
+    permissions:
+      contents: read
+      id-token: write
+    uses: dexteryo/d-github-actions/.github/workflows/env-power.yml@v0.7.0
+    with:
+      environment: ${{ inputs.environment }}
+      aws-region: eu-west-1
+      role-to-assume: arn:aws:iam::123456789012:role/ordering-${{ inputs.environment }}-operator
+      schedule-group: ordering-${{ inputs.environment }}
+      action: ${{ inputs.action }}

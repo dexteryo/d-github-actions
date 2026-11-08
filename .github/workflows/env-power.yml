@@ -1,0 +1,55 @@
+name: Environment power
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub environment whose jobs the operator role trusts
+        type: string
+        required: true
+      aws-region:
+        type: string
+        required: true
+      role-to-assume:
+        description: ARN of the env-schedule operator role (output operator_role_arn)
+        type: string
+        required: true
+      schedule-group:
+        description: Name of the env-schedule schedule group (output schedule_group_name)
+        type: string
+        required: true
+      action:
+        description: start or stop
+        type: string
+        required: true
+      wait:
+        description: Wait until databases are available and services have settled
+        type: boolean
+        default: true
+      timeout-minutes:
+        type: number
+        default: 30
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: env-power-${{ inputs.schedule-group }}
+  cancel-in-progress: false
+
+jobs:
+  power:
+    name: ${{ inputs.action }} ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - name: Start or stop
+        uses: dexteryo/d-github-actions/actions/env-power@55b45040608be0047aa12393a8c0a3fa467c7cd3 # v0.7.0
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.role-to-assume }}
+          schedule-group: ${{ inputs.schedule-group }}
+          action: ${{ inputs.action }}
+          wait: ${{ inputs.wait }}
