@@ -4,6 +4,8 @@ All notable changes to this repository are documented here. The format follows [
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-18
+
 ### Added
 
 - `actions/release-version`: composite action that resolves a version tag to its commit and refuses it unless the commit is on the default branch or on a protected `release/<name>` branch, so a caller on its default branch can deploy a hotfix tag from a release branch. Inputs `version`, `tag-prefix`, `branch` (default empty, the default branch) and `github-token`; outputs `sha` and `tag`.
