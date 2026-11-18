@@ -16,6 +16,7 @@ This repository is public. It contains no account identifiers, hostnames or secr
 | `actions/promotion-plan` | Composite action: validates the ordered `environments` list of a promotion |
 | `actions/semver-next` | Composite action: next `X.Y.Z` of a commit from the highest version tag it contains and the Conventional Commits since |
 | `actions/release-gate` | Composite action: refuses to release a version with no successful deployment to the environment before it (optionally no image in ECR), then creates `X.Y.Z-release` on the same commit |
+| `actions/release-version` | Composite action: resolves a version tag to its commit and refuses it unless the commit is on the default branch, or on a protected `release/*` branch for a hotfix |
 | `actions/terraform-gate` | Composite action: `terraform fmt`, `terraform validate` per root module, tflint, checkov |
 | `actions/terraform-plan` | Composite action: OIDC login, `terraform plan`, summary, one pull request comment per root module, edited in place |
 | `actions/terraform-apply` | Composite action: OIDC login, plan, apply the saved plan |
@@ -29,7 +30,7 @@ This repository is public. It contains no account identifiers, hostnames or secr
 | `scripts/check-no-foreign-identifiers.sh` | Fails on a hashed deny-list of foreign identifiers and on 12-digit numbers other than `123456789012` |
 | `scripts/lambda-deploy.sh` | Validates the inputs, zips the listed files, updates the function code and waits (testable locally with a stub `aws`) |
 | `scripts/env-power.sh` | Reads a schedule group, starts databases before services or stops services before databases, waits (testable locally with a stub `aws`) |
-| `scripts/semver-next.sh`, `scripts/release-gate.sh` | The version arithmetic and the release checks behind those actions (testable locally with a stub `gh` and `aws`) |
+| `scripts/semver-next.sh`, `scripts/release-gate.sh`, `scripts/release-version.sh` | The version arithmetic and the release checks behind those actions (testable locally with a stub `gh` and `aws`) |
 | `scripts/check-deployment.sh` | Decides from `describe-services` JSON whether the new revision rolled out (0 done, 10 keep polling, 1 failed) |
 | `scripts/terraform-plan-summary.sh`, `scripts/terraform-plan-comment.sh`, `scripts/upsert-pr-comment.sh` | One-line plan summary from the exit code and log; markdown body of the pull request comment, ending in a hidden marker; edit the comment that carries the marker, or create it |
 | `examples/caller.yml` | Copy-paste caller workflow |
@@ -196,6 +197,25 @@ When all pass and `create-tag` is `true` (the default), it creates `1.9.1-releas
 The deployment check passes when any deployment of the commit to the environment ended in `success`. It cannot tell which job a deployment came from, so a run where one deploy job failed and another succeeded still counts; the ECR check covers the image on its own.
 
 Semantic Versioning ranks `1.9.1-release` below `1.9.1`, because anything after a `-` is a pre-release. The actions never compare the two kinds of tag, but a tool that sorts tags by semver will show the release tag before its version.
+
+### Releasing a version from a protected branch
+
+A caller that deploys from its protected default branch and picks the release with a `version` input (so the OIDC subject and the GitHub environment's branch policy stay on that branch) resolves the version with `actions/release-version`. It returns the tag's commit for the deploy to check out, after checking:
+
+1. `branch` is the default branch, or matches `release/<name>` and is protected. An empty `branch` means the default branch.
+2. The tag exists. An annotated tag is followed to its commit.
+3. The commit is on `branch`: the compare API reports the branch `ahead` of it or `identical`.
+
+The `release/*` branch is for a hotfix when the default branch has moved on to work that must not ship yet: cut it from the version that runs, fix, tag the fix by hand and pass `branch: release/<name>`. The protection check is what keeps it safe, because anyone with write access could otherwise push unreviewed code to the branch and release it. Merge the fix back into the default branch as well; the next tag there won't include it otherwise.
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `version` | yes | `X.Y.Z` |
+| `tag-prefix` | no | As in `semver-next` |
+| `branch` | no | Default empty, the default branch |
+| `github-token` | no | Default `github.token`; needs `contents: read` |
+
+Outputs: `sha` (the commit) and `tag`.
 
 ## Terraform
 

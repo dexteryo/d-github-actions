@@ -1,0 +1,45 @@
+name: Release version
+description: Resolve a version tag to its commit and refuse it unless the commit is on the default branch or on a protected release/* branch.
+
+inputs:
+  version:
+    description: Version to release, X.Y.Z without prefix
+    required: true
+  tag-prefix:
+    description: Prefix of version tags, for example v
+    required: false
+    default: ""
+  branch:
+    description: Branch the version's commit must be on. Empty means the default branch; anything else must be a protected release/<name> branch, for a hotfix
+    required: false
+    default: ""
+  github-token:
+    description: Token with contents read
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  sha:
+    description: Commit of the version tag
+    value: ${{ steps.resolve.outputs.sha }}
+  tag:
+    description: Version tag that was resolved
+    value: ${{ steps.resolve.outputs.tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the version tag
+      id: resolve
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPOSITORY: ${{ github.repository }}
+        VERSION: ${{ inputs.version }}
+        TAG_PREFIX: ${{ inputs.tag-prefix }}
+        BRANCH: ${{ inputs.branch || github.event.repository.default_branch }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        "$ACTION_PATH/../../scripts/release-version.sh" "$REPOSITORY" "$VERSION" "$TAG_PREFIX" "$BRANCH" | tee -a "$GITHUB_OUTPUT"
+        echo "${TAG_PREFIX}${VERSION} is on $BRANCH" >> "$GITHUB_STEP_SUMMARY"
